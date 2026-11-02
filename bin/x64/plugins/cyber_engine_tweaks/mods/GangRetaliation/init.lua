@@ -458,7 +458,7 @@ local function hierarchyEvent(kind, a, b)
         notify(string.format(text("GR-MsgReturned", "%s is back from the dead, rebuilt with chrome. They are coming for you."), nameA .. " (" .. gang .. ")"))
         local phone = getSystem("GangRetaliation.GRPhone")
         if phone then
-            phone:SendSms(nameA, text("GR-SmsReturn-" .. math.random(3), "..."))
+            phone:SendReturn(nameA, text("GR-SmsReturn-" .. math.random(3), "..."))
         end
     elseif kind == "recruited" then
         notify(string.format(text("GR-MsgRecruited", "New face in the %s: %s, %s."), gang, nameA, rankA))

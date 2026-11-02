@@ -1,5 +1,65 @@
 # Changelog - Gang Retaliation
 
+## [1.3.1] - 2026-11-01
+
+### English
+
+#### Fixed
+- **"I'm back" SMS missing from the phone.** When a Nemesis returned from the ripperdoc, the
+  message only showed as a popup and never reached the inbox. It now goes to the "Unknown number"
+  thread like the ambush threats.
+- **Crashes in big fights and when combat ends.** The game delivers hits, deaths and combat changes
+  on several threads at once. The mod updated its fight lists right there, so two threads could change them together and crash the game (reported with Wraiths in the Badlands). Now those events only queue a call, and the mod handles them on the main
+  thread. Fighters are also kept by ID instead of by reference.
+- **Jackie (and other allies) could become a Nemesis.** Jackie is a Valentino, so hitting him by
+  accident in a fight made him a candidate. Companions and NPCs friendly to V are now ignored.
+
+#### Changed
+- **Vehicle ambushes start on the street.** The car now spawns next to a car that is already in
+  traffic or parked nearby, facing the same way as the lane and pointing towards V, with a walking
+  path to V. Before, it used any walkable point, which could be a sidewalk or a plaza, so some
+  ambushes ended up on foot. If there is no usable car nearby, it falls back to the old method.
+  Idea taken from They Will Remember.
+- **Ambush cars drive faster** (they used to arrive after V had already left).
+- **NCPD raids no longer pop up in front of V.** They now spawn behind or to the sides, outside a
+  70° cone in front of V and with no line of sight. Every cop and ganger is checked, not just the
+  center of each group (some used to appear in sight, inside walls or on another floor).
+- **NCPD and gangers just staring at each other in raids.** Hostility between the two sides was
+  set only once, when each NPC spawned; if its AI was not ready yet, it stayed passive. Now, every
+  3 seconds, anyone not fighting is pointed at the nearest living enemy (like the passive Nemesis
+  fix for ambushes).
+
+### Español
+
+#### Arreglado
+- **SMS de "volví" que no estaba en el teléfono.** Cuando un Némesis volvía del matasanos, el
+  mensaje solo salía como aviso y nunca llegaba a la bandeja. Ahora va al hilo "Número
+  desconocido", como las amenazas de emboscada.
+- **Crashes en peleas grandes y al terminar el combate.** El juego entrega los golpes, las muertes y
+  los cambios de combate en varios hilos a la vez (un escopetazo a un grupo, por ejemplo). El mod
+  actualizaba sus listas de la pelea ahí mismo, así que dos hilos podían tocarlas juntos y el juego
+  crasheaba (reportado con Wraiths en las Badlands). Ahora esos eventos solo agendan una llamada y
+  el mod los procesa en el hilo principal. Los peleadores además se guardan por ID y no por
+  referencia.
+- **Jackie (y otros aliados) podían volverse Némesis.** Jackie es Valentino, así que pegarle sin
+  querer en una pelea lo volvía candidato. Ahora se ignoran los acompañantes y los NPC amistosos
+  con V.
+
+#### Cambiado
+- **Las emboscadas en vehículo arrancan en la calle.** El auto ahora aparece junto a un auto que ya
+  está en el tráfico o estacionado cerca, mirando como el carril y hacia V, con camino a pie hasta V.
+  Antes usaba cualquier punto caminable, que podía ser una vereda o una plaza, y algunas emboscadas
+  terminaban a pie. Si no hay un auto útil cerca, usa el método anterior. Idea tomada de They Will
+  Remember.
+- **Los autos de emboscada manejan más rápido** (antes llegaban cuando V ya se había ido).
+- **Las redadas de la NCPD ya no aparecen delante de V.** Ahora aparecen detrás o a los costados,
+  fuera de un cono de 70° delante de V y sin línea de vista. Se revisa a cada policía y pandillero,
+  no solo el centro de cada grupo (algunos aparecían a la vista, dentro de paredes o en otro piso).
+- **Policías y pandilleros que se quedaban mirándose en las redadas.** La hostilidad entre los dos
+  bandos se ponía una sola vez, al aparecer cada NPC; si su IA no estaba lista, quedaba pasivo.
+  Ahora, cada 3 segundos, a quien no esté peleando se le marca el enemigo vivo más cercano (como el
+  arreglo de Némesis pasivos en las emboscadas).
+
 ## [1.3.0] - 2026-10-31
 
 ### English

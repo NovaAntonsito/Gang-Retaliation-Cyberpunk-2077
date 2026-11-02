@@ -34,7 +34,8 @@ public class GRDetection extends ScriptableSystem {
 
     private let m_promoted: array<EntityID>;
 
-    private let m_combatants: array<wref<ScriptedPuppet>>;
+    // IDs y no referencias: un NPC a medio descargar deja una referencia rota; el ID se busca cada vez.
+    private let m_combatants: array<EntityID>;
 
     private let m_someoneFled: Bool;
 
@@ -86,6 +87,18 @@ public class GRDetection extends ScriptableSystem {
             }
         }
         return NotEquals(GRDetection.GetGang(npc), "");
+    }
+
+    // Jackie (Valentino) y otros acompañantes: un golpe de V por error no los vuelve candidatos.
+    public static func IsPlayerAlly(npc: ref<ScriptedPuppet>) -> Bool {
+        if !IsDefined(npc) {
+            return false;
+        }
+        if npc.IsPlayerCompanion() {
+            return true;
+        }
+        let player: ref<PlayerPuppet> = GetPlayer(npc.GetGame());
+        return IsDefined(player) && Equals(GameObject.GetAttitudeBetween(npc, player), EAIAttitude.AIA_Friendly);
     }
 
     public static func IsNeutralized(npc: ref<ScriptedPuppet>) -> Bool {
@@ -169,13 +182,17 @@ public class GRDetection extends ScriptableSystem {
         return created;
     }
 
-    private func AddCombatant(npc: ref<ScriptedPuppet>) {
+    private func AddCombatant(id: EntityID) {
         for combatant in this.m_combatants {
-            if combatant == npc {
+            if combatant == id {
                 return;
             }
         }
-        ArrayPush(this.m_combatants, npc);
+        ArrayPush(this.m_combatants, id);
+    }
+
+    private func FindPuppet(id: EntityID) -> ref<ScriptedPuppet> {
+        return GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
     }
 
     private func ResetFight() {
@@ -201,9 +218,10 @@ public class GRDetection extends ScriptableSystem {
         let last: ref<ScriptedPuppet>;
         let alive: Int32 = 0;
         for combatant in this.m_combatants {
-            if !GRDetection.IsNeutralized(combatant) {
+            let npc: ref<ScriptedPuppet> = this.FindPuppet(combatant);
+            if !GRDetection.IsNeutralized(npc) {
                 alive += 1;
-                last = combatant;
+                last = npc;
             }
         }
         if alive != 1 {
@@ -397,55 +415,69 @@ public class GRDetection extends ScriptableSystem {
         this.m_fleeMode = mode;
     }
 
-    public func OnPlayerHitNPC(npc: ref<ScriptedPuppet>) {
-        if !this.IsEnabled() || !GRDetection.IsEligible(npc) || this.WasPromoted(npc.GetEntityID()) {
+    // Entrada unica de los eventos del motor. Siempre llega desde GRDetectionCall, en el hilo principal.
+    public func HandleCall(kind: Int32, id: EntityID) {
+        if kind == GRDetectionCall.CombatEnded() {
+            this.OnPlayerCombatEnded();
             return;
         }
-        this.AddCombatant(npc);
+        if kind == GRDetectionCall.NPCDeath() {
+            this.OnNPCDeath(id);
+            return;
+        }
+        let npc: ref<ScriptedPuppet> = this.FindPuppet(id);
+        if !IsDefined(npc) {
+            return;
+        }
+        if kind == GRDetectionCall.PlayerHitNPC() {
+            this.OnPlayerHitNPC(npc);
+        } else {
+            if kind == GRDetectionCall.NPCHitPlayer() {
+                this.OnNPCHitPlayer(npc);
+            }
+        }
+    }
+
+    private func OnPlayerHitNPC(npc: ref<ScriptedPuppet>) {
+        if !this.IsEnabled() || !GRDetection.IsEligible(npc) || GRDetection.IsPlayerAlly(npc) || this.WasPromoted(npc.GetEntityID()) {
+            return;
+        }
+        this.AddCombatant(npc.GetEntityID());
         this.UpsertCandidate(npc);
         this.CheckLastStanding();
     }
 
-    public func OnNPCHitPlayer(npc: ref<ScriptedPuppet>) {
+    private func OnNPCHitPlayer(npc: ref<ScriptedPuppet>) {
         if this.IsEnabled() && GRDetection.IsEligible(npc) {
-            this.AddCombatant(npc);
+            this.AddCombatant(npc.GetEntityID());
         }
     }
 
-    public func OnNPCDeath(npc: ref<ScriptedPuppet>) {
+    private func OnNPCDeath(id: EntityID) {
         let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
         if IsDefined(spawner) {
-            spawner.MarkDead(npc.GetEntityID());
+            spawner.MarkDead(id);
         }
-        let index: Int32 = this.FindCandidate(npc.GetEntityID());
+        let index: Int32 = this.FindCandidate(id);
         if index >= 0 {
             ArrayErase(this.m_candidates, index);
         }
         let f: Int32 = 0;
         while f < ArraySize(this.m_fleeing) {
-            if this.m_fleeing[f].entityID == npc.GetEntityID() {
+            if this.m_fleeing[f].entityID == id {
                 ArrayErase(this.m_fleeing, f);
                 ArrayErase(this.m_fleeStart, f);
                 f = ArraySize(this.m_fleeing);
             }
             f += 1;
         }
-        let i: Int32 = 0;
-        while i < ArraySize(this.m_combatants) {
-            if this.m_combatants[i] == npc {
-                ArrayErase(this.m_combatants, i);
-
-                ArrayPush(this.m_combatants, null);
-                i = ArraySize(this.m_combatants);
-            }
-            i += 1;
-        }
+        // El muerto sigue en m_combatants: cuenta para el tamano de la pelea y IsNeutralized lo descarta.
         if this.IsEnabled() {
             this.CheckLastStanding();
         }
     }
 
-    public func OnPlayerCombatEnded() {
+    private func OnPlayerCombatEnded() {
         if !this.IsEnabled() {
             this.ResetFight();
             return;
@@ -459,17 +491,16 @@ public class GRDetection extends ScriptableSystem {
         let threshold: Float = Cast<Float>(settings.escapeHealthPercent);
         let debugLog: Bool = IsDefined(settings) && settings.debugLog;
 
-        // Copia local: OnNPCDeath puede borrar de m_candidates mientras se recorre.
-        let candidates: array<ref<GRCandidate>> = this.m_candidates;
+        // Sin copia local: todo corre en el hilo principal y nada borra de m_candidates durante el recorrido.
         let i: Int32 = 0;
-        while i < ArraySize(candidates) {
-            let candidate: ref<GRCandidate> = candidates[i];
+        while i < ArraySize(this.m_candidates) {
+            let candidate: ref<GRCandidate> = this.m_candidates[i];
             let npc: ref<ScriptedPuppet>;
             if IsDefined(candidate) {
                 npc = GameInstance.FindEntityByID(this.GetGameInstance(), candidate.entityID) as ScriptedPuppet;
             }
             // Si otro mod lo borró, no hay pruebas de que haya escapado.
-            if IsDefined(npc) && !GRDetection.IsNeutralized(npc) {
+            if IsDefined(npc) && !GRDetection.IsNeutralized(npc) && !GRDetection.IsPlayerAlly(npc) {
                 candidate.health = this.GetHealthPercent(npc);
                 candidate.position = npc.GetWorldPosition();
 
@@ -520,7 +551,7 @@ public class GRDetection extends ScriptableSystem {
         if !IsDefined(target) {
             return false;
         }
-        this.AddCombatant(target);
+        this.AddCombatant(target.GetEntityID());
         this.MakeFlee(target);
         return true;
     }
@@ -561,8 +592,9 @@ public class GRDetection extends ScriptableSystem {
     public func GetFightGangs() -> String {
         let result: String = "";
         for combatant in this.m_combatants {
-            if IsDefined(combatant) {
-                let gang: String = GRDetection.GetGang(combatant);
+            let npc: ref<ScriptedPuppet> = this.FindPuppet(combatant);
+            if IsDefined(npc) {
+                let gang: String = GRDetection.GetGang(npc);
                 if StrLen(gang) > 0 && !StrContains(result, gang) {
                     result += (StrLen(result) > 0 ? "," : "") + gang;
                 }
@@ -585,6 +617,35 @@ public class GRDetection extends ScriptableSystem {
     }
 }
 
+// Golpes, muertes y cambios de combate llegan desde hilos de trabajo del motor, a veces varios a la vez
+// (una escopeta contra un grupo). Si tocaran las listas de GRDetection desde ahi, dos hilos las modifican
+// juntos y el juego crashea. Los hooks solo agendan esta llamada; GRDetection la procesa en el hilo principal.
+public class GRDetectionCall extends DelayCallback {
+    public let gi: GameInstance;
+    public let kind: Int32;
+    public let entityID: EntityID;
+
+    public static func PlayerHitNPC() -> Int32 { return 0; }
+    public static func NPCHitPlayer() -> Int32 { return 1; }
+    public static func NPCDeath() -> Int32 { return 2; }
+    public static func CombatEnded() -> Int32 { return 3; }
+
+    public static func Send(gi: GameInstance, kind: Int32, id: EntityID) {
+        let call: ref<GRDetectionCall> = new GRDetectionCall();
+        call.gi = gi;
+        call.kind = kind;
+        call.entityID = id;
+        GameInstance.GetDelaySystem(gi).DelayCallback(call, 0.0, false);
+    }
+
+    public func Call() -> Void {
+        let det: ref<GRDetection> = GRDetection.Get(this.gi);
+        if IsDefined(det) {
+            det.HandleCall(this.kind, this.entityID);
+        }
+    }
+}
+
 @wrapMethod(HitReactionComponent)
 public func EvaluateHit(newHitEvent: ref<gameHitEvent>) -> Void {
     wrappedMethod(newHitEvent);
@@ -594,32 +655,23 @@ public func EvaluateHit(newHitEvent: ref<gameHitEvent>) -> Void {
 
     if IsDefined(newHitEvent.target as PlayerPuppet) {
         let attacker: ref<ScriptedPuppet> = newHitEvent.attackData.GetInstigator() as ScriptedPuppet;
-        if IsDefined(attacker) {
-            let det: ref<GRDetection> = GRDetection.Get(attacker.GetGame());
-            if IsDefined(det) {
-                det.OnNPCHitPlayer(attacker);
-            }
+        if IsDefined(attacker) && GRDetection.IsEligible(attacker) {
+            GRDetectionCall.Send(attacker.GetGame(), GRDetectionCall.NPCHitPlayer(), attacker.GetEntityID());
         }
         return;
     }
 
     if IsDefined(newHitEvent.attackData.GetInstigator() as PlayerPuppet) {
         let npc: ref<ScriptedPuppet> = newHitEvent.target as ScriptedPuppet;
-        if IsDefined(npc) {
-            let system: ref<GRDetection> = GRDetection.Get(npc.GetGame());
-            if IsDefined(system) {
-                system.OnPlayerHitNPC(npc);
-            }
+        if IsDefined(npc) && GRDetection.IsEligible(npc) {
+            GRDetectionCall.Send(npc.GetGame(), GRDetectionCall.PlayerHitNPC(), npc.GetEntityID());
         }
     }
 }
 
 @wrapMethod(NPCPuppet)
 protected cb func OnDeath(evt: ref<gameDeathEvent>) -> Bool {
-    let system: ref<GRDetection> = GRDetection.Get(this.GetGame());
-    if IsDefined(system) {
-        system.OnNPCDeath(this);
-    }
+    GRDetectionCall.Send(this.GetGame(), GRDetectionCall.NPCDeath(), this.GetEntityID());
     return wrappedMethod(evt);
 }
 
@@ -628,10 +680,7 @@ protected cb func OnCombatStateChanged(newState: Int32) -> Bool {
     let wasInCombat: Bool = this.IsInCombat();
     let result: Bool = wrappedMethod(newState);
     if wasInCombat && newState != 1 {
-        let system: ref<GRDetection> = GRDetection.Get(this.GetGame());
-        if IsDefined(system) {
-            system.OnPlayerCombatEnded();
-        }
+        GRDetectionCall.Send(this.GetGame(), GRDetectionCall.CombatEnded(), this.GetEntityID());
     }
     return result;
 }
