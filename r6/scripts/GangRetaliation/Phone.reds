@@ -15,6 +15,11 @@ public class GRPhone extends ScriptableSystem {
         return this.SendJournalSms("gr_unknown", "gr_threats", 1, 12, from, fallbackText);
     }
 
+    // Mismo hilo que las amenazas, mensajes 13-15: asi queda en la bandeja y no solo en el aviso.
+    public func SendReturn(from: String, fallbackText: String) -> Bool {
+        return this.SendJournalSms("gr_unknown", "gr_threats", 13, 15, from, fallbackText);
+    }
+
     public func SendBounty(deducted: Bool, fallbackText: String) -> Bool {
         if deducted {
             return this.SendJournalSms("gr_ncpd", "gr_bounty", 7, 9, "NCPD", fallbackText);

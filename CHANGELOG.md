@@ -1,5 +1,59 @@
 # Changelog - Gang Retaliation
 
+## [Unreleased / Sin publicar] - integraciones
+
+### English
+
+#### Added
+- **They Will Remember integration (optional).** When a TWR vengeance squad of a gang with a living
+  Nemesis fights V, that Nemesis may join and lead it (same chance as gig reinforcements). TWR's
+  grudge (gang hostile, recent kills) raises the ambush chance, up to x2.
+- **Drug Dealer integration (optional).** Gang Retaliation's ambushes, raids and skirmishes wait while a
+  Drug Dealer job has enemies alive. A Nemesis may show up with the gang raiding your business or
+  defending its turf. Your dealer rank raises the ambush chance (up to x1.48). Your Drug Dealer
+  soldiers never become Nemeses, and an enemy that Drug Dealer removes while fleeing no longer counts
+  as escaped.
+- Both work only if the other mod is installed; without it nothing changes.
+
+### Español
+
+#### Agregado
+- **Integración con They Will Remember (opcional).** Cuando un escuadrón de venganza de TWR de una
+  banda con Némesis vivo pelea con V, ese Némesis puede sumarse y encabezarlo (misma probabilidad
+  que los refuerzos de gigs). El rencor de TWR (banda hostil, muertes recientes) sube la
+  probabilidad de emboscada, hasta x2.
+- **Integración con Drug Dealer (opcional).** Las emboscadas, redadas y escaramuzas de Gang
+  Retaliation esperan mientras una misión de Drug Dealer tenga enemigos vivos. Un Némesis puede
+  aparecer con la banda que ataca tu negocio o defiende su territorio. Tu rango de traficante sube la
+  probabilidad de emboscada (hasta x1.48). Tus soldados de Drug Dealer nunca se vuelven Némesis, y un
+  enemigo que Drug Dealer borra mientras huye ya no cuenta como escapado.
+- Las dos solo actúan si el otro mod está instalado; sin él no cambia nada.
+
+## [1.3.1] - 2026-11-01
+
+### English
+
+#### Fixed
+- **"I'm back" SMS missing from the phone.** When a Nemesis returned from the ripperdoc, the
+  message only showed as a popup and never reached the inbox. It now goes to the "Unknown number"
+  thread like the ambush threats.
+- **Crashes in big fights and when combat ends.** The game delivers hits, deaths and combat changes
+  on several threads at once. The mod updated its fight lists right there, so two threads could change them together and crash the game (reported with Wraiths in the Badlands). Now those events only queue a call, and the mod handles them on the main
+  thread. Fighters are also kept by ID instead of by reference.
+
+### Español
+
+#### Arreglado
+- **SMS de "volví" que no estaba en el teléfono.** Cuando un Némesis volvía del matasanos, el
+  mensaje solo salía como aviso y nunca llegaba a la bandeja. Ahora va al hilo "Número
+  desconocido", como las amenazas de emboscada.
+- **Crashes en peleas grandes y al terminar el combate.** El juego entrega los golpes, las muertes y
+  los cambios de combate en varios hilos a la vez (un escopetazo a un grupo, por ejemplo). El mod
+  actualizaba sus listas de la pelea ahí mismo, así que dos hilos podían tocarlas juntos y el juego
+  crasheaba (reportado con Wraiths en las Badlands). Ahora esos eventos solo agendan una llamada y
+  el mod los procesa en el hilo principal. Los peleadores además se guardan por ID y no por
+  referencia.
+
 ## [1.3.0] - 2026-10-31
 
 ### English

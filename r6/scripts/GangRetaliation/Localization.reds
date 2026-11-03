@@ -267,6 +267,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetGigChance", "Chance per gig (%)");
         this.Text("GR-SetGigChanceDesc", "Checked once per gig, when V starts fighting that gang.");
         this.Text("GR-MsgGig", "%s heard you were coming and brought backup!");
+        this.Text("GR-MsgSquadTWR", "%s is leading the vengeance squad!");
+        this.Text("GR-MsgSquadDD", "%s came with the crew hitting your business!");
         this.Text("GR-Gig-1", "This job's got your name on it, V. So does my gun.");
         this.Text("GR-Gig-2", "Nobody hits my crew without hearing from me!");
         this.Text("GR-Gig-3", "Knew the fixer would send you. Been waiting.");
@@ -576,6 +578,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetGigChance", "Probabilidad por gig (%)");
         this.Text("GR-SetGigChanceDesc", "Se tira una vez por gig, cuando V empieza a pelear contra esa banda.");
         this.Text("GR-MsgGig", "¡%s se ha enterado de que venías y ha traído refuerzos!");
+        this.Text("GR-MsgSquadTWR", "¡%s encabeza el escuadrón de venganza!");
+        this.Text("GR-MsgSquadDD", "¡%s vino con los que atacan tu negocio!");
         this.Text("GR-Gig-1", "Este encargo lleva tu nombre, V. Mi pistola también.");
         this.Text("GR-Gig-2", "¡Nadie toca a mi gente sin vérselas conmigo!");
         this.Text("GR-Gig-3", "Sabía que el fixer te mandaría a ti. Te estaba esperando.");

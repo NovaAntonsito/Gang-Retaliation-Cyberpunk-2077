@@ -434,7 +434,19 @@ public class GRSpawner extends ScriptableSystem {
         if GRSpawner.IsTWRSquadActive() {
             return "They Will Remember squad";
         }
+        if GRIntegrations.IsDDJobActive(this.GetGameInstance()) {
+            return "Drug Dealer job";
+        }
         return "";
+    }
+
+    // Para CET (Integrations.reds): escuadron de TWR/DD cerca ("TWR|Banda") y multiplicador de emboscadas.
+    public func GetExternalSquad() -> String {
+        return GRIntegrations.GetExternalSquad(this.GetGameInstance());
+    }
+
+    public func GetHeatFactor() -> Float {
+        return GRIntegrations.GetHeatFactor(this.GetGameInstance(), this.GetDistrictGangs());
     }
 
     // They Will Remember manda sus propias venganzas (tag TheyWillRemember.Squad): no sumar otra encima.
