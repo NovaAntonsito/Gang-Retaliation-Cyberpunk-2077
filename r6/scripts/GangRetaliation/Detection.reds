@@ -13,6 +13,8 @@ public class GRCandidate {
     public let fleeing: Bool;
     // Ya huyo en esta pelea (aunque StopFlee lo haya hecho volver): si sobrevive, escapo.
     public let fled: Bool;
+    // Generado por Drug Dealer: si desaparece, lo borro DD (Purge), no escapo.
+    public let ddSpawn: Bool;
 }
 
 public class GRNemesisEvent {
@@ -159,6 +161,7 @@ public class GRDetection extends ScriptableSystem {
         let candidate: ref<GRCandidate> = new GRCandidate();
         candidate.entityID = npc.GetEntityID();
         candidate.gang = GRDetection.GetGang(npc);
+        candidate.ddSpawn = GRIntegrations.IsDDSpawn(npc.GetEntityID());
         candidate.nemesisId = this.GetSpawnedNemesisId(npc.GetEntityID());
         candidate.recordID = npc.GetRecord().GetID();
         candidate.appearance = npc.GetCurrentAppearanceName();
@@ -243,7 +246,7 @@ public class GRDetection extends ScriptableSystem {
             return;
         }
         let health: Float = this.GetHealthPercent(last);
-        if health > 0.0 && health <= Cast<Float>(settings.fleeHealthPercent) {
+        if health > 0.0 && health <= GRIntegrations.GetFleePercent(settings.fleeHealthPercent) {
             this.m_someoneFled = true;
             this.m_pendingFlee = last.GetEntityID();
             this.m_hasPendingFlee = true;
@@ -373,7 +376,11 @@ public class GRDetection extends ScriptableSystem {
             let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), candidate.entityID) as ScriptedPuppet;
             let done: Bool = false;
             if !IsDefined(npc) {
-                this.Promote(candidate, "fled");
+                if candidate.ddSpawn {
+                    this.Debug("Huida descartada: Drug Dealer borro a su NPC (" + candidate.gang + ")");
+                } else {
+                    this.Promote(candidate, "fled");
+                }
                 done = true;
             } else {
                 if GRDetection.IsNeutralized(npc) {
@@ -439,7 +446,8 @@ public class GRDetection extends ScriptableSystem {
     }
 
     private func OnPlayerHitNPC(npc: ref<ScriptedPuppet>) {
-        if !this.IsEnabled() || !GRDetection.IsEligible(npc) || GRDetection.IsPlayerAlly(npc) || this.WasPromoted(npc.GetEntityID()) {
+        if !this.IsEnabled() || !GRDetection.IsEligible(npc) || GRDetection.IsPlayerAlly(npc) || this.WasPromoted(npc.GetEntityID())
+            || GRIntegrations.IsDDAlly(npc.GetEntityID()) {
             return;
         }
         this.AddCombatant(npc.GetEntityID());
@@ -448,7 +456,7 @@ public class GRDetection extends ScriptableSystem {
     }
 
     private func OnNPCHitPlayer(npc: ref<ScriptedPuppet>) {
-        if this.IsEnabled() && GRDetection.IsEligible(npc) {
+        if this.IsEnabled() && GRDetection.IsEligible(npc) && !GRIntegrations.IsDDAlly(npc.GetEntityID()) {
             this.AddCombatant(npc.GetEntityID());
         }
     }

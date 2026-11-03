@@ -79,7 +79,7 @@ private func GRUpdateNameplate(npc: ref<ScriptedPuppet>) {
         this.m_grCheckedAt = now;
     }
     if IsDefined(this.m_healthController) {
-        this.m_healthController.GRSetFleeMark(Cast<Float>(settings.fleeHealthPercent) / 100.0, settings.fleeMarkEnabled && this.m_grCanFlee);
+        this.m_healthController.GRSetFleeMark(GRIntegrations.GetFleePercent(settings.fleeHealthPercent) / 100.0, settings.fleeMarkEnabled && this.m_grCanFlee);
     }
 }
 
@@ -468,7 +468,7 @@ public class GRHud extends ScriptableSystem {
         this.PlaceBox(settings);
         this.m_box.SetVisible(true);
         this.m_count.SetText(IntToString(ArraySize(threats)));
-        let flee: Float = Cast<Float>(settings.fleeHealthPercent);
+        let flee: Float = GRIntegrations.GetFleePercent(settings.fleeHealthPercent);
         let shown: Int32 = Min(settings.threatPanelRows, ArraySize(this.m_rows));
         let i: Int32 = 0;
         while i < ArraySize(this.m_rows) {

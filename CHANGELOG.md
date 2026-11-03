@@ -4,7 +4,31 @@
 
 ### English
 
+#### Added
+- **They Will Remember integration (optional).** When a TWR vengeance squad of a gang with a living
+  Nemesis fights V, that Nemesis may join and lead it (same chance as gig reinforcements). TWR's
+  grudge (gang hostile, recent kills) raises the ambush chance, up to x2.
+  - **Vengeance warning:** when TWR picks a gang to strike back, that gang's Boss or Lieutenant
+    Nemesis who knows V texts V first (new messages in the "Unknown number" thread).
+  - **Money doesn't buy a Nemesis:** if V pays TWR's redemption to a gang, TWR forgets, but its
+    Boss or Lieutenant Nemesis turns it down by text. Their ambushes drop to half for 3 game days.
+- **Drug Dealer integration (optional).** Gang Retaliation's ambushes, raids and skirmishes wait while a
+  Drug Dealer job has enemies alive. A Nemesis may show up with the gang raiding your business or
+  defending its turf. Your dealer rank raises the ambush chance (up to x1.48). Your Drug Dealer
+  soldiers never become Nemeses, and an enemy that Drug Dealer removes while fleeing no longer counts
+  as escaped.
+  - **Turf:** in a zone V contests in Drug Dealer, its gangs ambush more (x1.25); in a zone V
+    controls, they want it back (x1.5). The NEMESIS menu shows it: "TAKEN BY V" / "CONTESTED BY V"
+    on each neighborhood, a line in the district detail, and "Territory lost to V: ..." on each gang.
+  - **Terror:** Drug Dealer's terror makes gangers flee sooner (up to +15% on the flee health; the
+    flee mark on the health bar moves with it).
+- Both work only if the other mod is installed; without it nothing changes.
+
 #### Changed
+- **Tougher Nemeses.** They had the same health as a regular ganger. Now health scales with rank:
+  Soldier x1.5, Lieutenant x2.5, Boss x4 (escorts unchanged). New Mod Settings category "Nemesis
+  toughness" to tune each rank, plus an optional "Level based on V" (off by default: district level,
+  as before) with extra levels per rank.
 - **Quieter Nemesis notifications.** Updates (escapes, rumors, promotions, deaths...) now go to
   the side log, like looted items, with no sound and no screen buzz. The old big warning in the
   middle of the screen is still available: Mod Settings > General > "Center-screen notifications".

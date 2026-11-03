@@ -1171,6 +1171,20 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.m_summary.SetText(this.T("GR-MenuAlive") + " " + IntToString(alive) + "   |   " + this.T("GR-MenuFallenShort") + " " + IntToString(ArraySize(fallen))
             + "   |   " + this.T("GR-MenuKnowYouShort") + " " + IntToString(known));
 
+        // Drug Dealer: zonas que V le quito a esta banda, bajo la linea de las pestanas (a la izquierda).
+        let lostTurfs: String = GRIntegrations.GetDDLostTurfs(gangKey);
+        if StrLen(lostTurfs) > 0 {
+            let lostLine: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+            lostLine.SetAnchor(inkEAnchor.TopLeft);
+            lostLine.SetMargin(new inkMargin(120.0, 366.0, 0.0, 0.0));
+            lostLine.SetFitToContent(true);
+            lostLine.Reparent(this.m_tree);
+            let lostLabel: ref<inkText> = this.NewText(StrUpper(this.T("GR-MenuDDLost")), 30, this.Light(), n"Bold");
+            lostLabel.SetMargin(new inkMargin(0.0, 0.0, 14.0, 0.0));
+            lostLabel.Reparent(lostLine);
+            this.NewText(lostTurfs, 30, this.Cyan(), n"Medium").Reparent(lostLine);
+        }
+
         let cx: Float = this.CenterX();
         let bossY: Float = this.TierY(3);
         let ltY: Float = this.TierY(2);
@@ -1492,6 +1506,15 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             tag.Reparent(row);
         }
         this.PlaceText(row, StrUpper(this.InfluenceLabel(influence, owner)), 24, this.GangColor(owner), n"Bold", 18.0, 48.0);
+        // Drug Dealer: zona que V le quito (o le disputa) a las bandas.
+        let ddState: Int32 = GRIntegrations.GetDDTurfState(this.m_tKeys[index]);
+        if ddState >= 1 {
+            let ddTag: ref<inkCompoundWidget> = this.NewTag(this.T(ddState == 2 ? "GR-MenuDDControlled" : "GR-MenuDDContested"), 18, ddState == 2 ? this.Cyan() : this.Gold());
+            ddTag.SetAnchor(inkEAnchor.TopRight);
+            ddTag.SetAnchorPoint(new Vector2(1.0, 0.0));
+            ddTag.SetMargin(new inkMargin(0.0, 46.0, 14.0, 0.0));
+            ddTag.Reparent(row);
+        }
         let bar: ref<inkHorizontalPanel> = this.NewInfluenceBar(influence, 565.0, 8.0);
         bar.SetAnchor(inkEAnchor.TopLeft);
         bar.SetMargin(new inkMargin(18.0, 80.0, 0.0, 0.0));
@@ -1656,8 +1679,15 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             this.PlaceRect(this.m_territory, x + 230.0, y + 12.0, 460.0, 14.0, this.Empty(), 1.0);
             this.PlaceRect(this.m_territory, x + 230.0, y + 12.0, 460.0 * Cast<Float>(values[i]) / Cast<Float>(max), 14.0, this.GangColor(gangs[i]), 1.0);
             this.PlaceText(this.m_territory, IntToString(values[i]), 30, this.Light(), n"Bold", x + 710.0, y);
+            let lost: String = GRIntegrations.GetDDLostTurfs(gangs[i]);
+            let lostText: String = StrLen(lost) > 0 ? this.T("GR-MenuDDLost") + " " + lost : "";
             if StrLen(notes[i]) > 0 {
-                this.PlaceText(this.m_territory, this.T("GR-MenuWeakened") + "  " + notes[i], 20, this.Red(), n"Bold", x + 230.0, y + 34.0);
+                let weak: String = this.T("GR-MenuWeakened") + "  " + notes[i];
+                this.PlaceText(this.m_territory, StrLen(lostText) > 0 ? weak + "   |   " + lostText : weak, 20, this.Red(), n"Bold", x + 230.0, y + 34.0);
+            } else {
+                if StrLen(lostText) > 0 {
+                    this.PlaceText(this.m_territory, lostText, 20, this.Cyan(), n"Bold", x + 230.0, y + 34.0);
+                }
             }
             i += 1;
         }
@@ -1696,6 +1726,13 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         name.SetFontStyle(n"Bold");
         name.Reparent(panel);
         this.NewText(this.T("GR-MenuControls") + ": " + StrUpper(this.InfluenceLabel(influence, owner)), 34, this.GangColor(owner), n"Bold").Reparent(panel);
+        let ddState: Int32 = GRIntegrations.GetDDTurfState(keys[pos]);
+        if ddState >= 1 {
+            let ddKey: String = ddState == 2 ? "GR-MenuDDDetailControlled" : "GR-MenuDDDetailContested";
+            let ddText: ref<inkText> = this.NewWrappedText(this.Fmt(this.T(ddKey), "%d", IntToString(GRIntegrations.GetDDTurfValue(keys[pos]))), 28, ddState == 2 ? this.Cyan() : this.Gold(), width);
+            ddText.SetMargin(new inkMargin(0.0, 16.0, 0.0, 0.0));
+            ddText.Reparent(panel);
+        }
 
         // Influencia de cada banda.
         this.AddSection(panel, this.T("GR-MenuInfluence"), 36.0);

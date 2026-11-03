@@ -293,7 +293,9 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
     if not force then
         local waited = os.time() - (campaign.lastAmbush or 0)
         if waited < settings.ambushCooldownMinutes * 60 then return "cooldown" end
-        if math.random(100) > settings.ambushChancePercent then return "roll failed" end
+        -- Rencor de They Will Remember y rango de Drug Dealer: x1.0 a x2.0.
+        local heat = spawner:GetHeatFactor()
+        if math.random(100) > settings.ambushChancePercent * heat then return "roll failed" end
         local safe, distance = Ambush.nearHome(campaign)
         if safe then return string.format("near home (%.0f m)", distance) end
     end
@@ -422,6 +424,48 @@ local function tryGig(force)
         end
     end
     return force and "no Nemesis for this fight" or nil
+end
+
+-- Integraciones: un escuadron de venganza de They Will Remember o una mision de Drug Dealer contra una
+-- banda con Nemesis vivo. Se tira una vez por escuadron (misma probabilidad que los gigs), cuando V ya
+-- pelea; si el escuadron desaparece, se olvida y el proximo vuelve a tirar.
+local function tryExternalSquad()
+    local settings = getSettings()
+    local spawner = getSpawner()
+    if not settings or not spawner or not settings.enabled or not settings.gigEnabled then return nil end
+
+    local squad = spawner:GetExternalSquad()
+    if squad == "" then
+        GR.externalRolled = {}
+        return nil
+    end
+    GR.externalRolled = GR.externalRolled or {}
+    if GR.externalRolled[squad] then return nil end
+    if spawner:GetReinforcementBlocker() ~= "" then return nil end
+    GR.externalRolled[squad] = true
+
+    local source, gang = string.match(squad, "^(%a+)|(.+)$")
+    local n = gang and Ambush.pickFromGang(Store.campaign(GR.campaignId).nemeses, gang)
+    local roll = math.random(100)
+    if not n or roll > settings.gigChancePercent then
+        return string.format("%s: %s", squad, n and ("tirada " .. roll .. " fallida") or "sin Nemesis vivo")
+    end
+
+    local line = text(Ambush.gigLineKey(n), "...")
+    local escorts = Ambush.escorts(n, math.min(1, settings.ambushMaxEscorts))
+    pushTraits(n)
+    if not spawner:StartReinforcement(n.id, n.recordID, n.appearance or "", escorts, line, fullName(n)) then
+        return squad .. ": spawn failed"
+    end
+    n.gigs = (n.gigs or 0) + 1
+    GR.encounterId = n.id
+    Store.dirty = true
+    if source == "TWR" then
+        notify(string.format(text("GR-MsgSquadTWR", "%s is leading the vengeance squad!"), labelOf(n)))
+    else
+        notify(string.format(text("GR-MsgSquadDD", "%s came with the crew hitting your business!"), labelOf(n)))
+    end
+    return squad .. ": Nemesis #" .. n.id
 end
 
 local function processAppearances()
@@ -906,6 +950,8 @@ local function update(delta)
         end
         local ok, result = pcall(tryGig, false)
         if result then debugLog("Gig: " .. tostring(result)) end
+        local okE, resultE = pcall(tryExternalSquad)
+        if resultE then debugLog("Escuadron externo: " .. tostring(resultE)) end
     end
 
     GR.ambushTimer = (GR.ambushTimer or 0) + delta
@@ -1154,6 +1200,23 @@ registerForEvent("onDraw", function()
             if ImGui.Button("Debug: skirmish now") then
                 local ok, res = pcall(trySkirmish, true)
                 GR.lastAction = tostring(res)
+            end
+            -- Drug Dealer (la logica esta en GRSpawner.DebugDD / GRIntegrations)
+            local ddSpawner = getSpawner()
+            if ddSpawner then
+                if not GR.ddInfoAt or os.clock() - GR.ddInfoAt > 1 then
+                    GR.ddInfo = ddSpawner:GetDDDebugInfo()
+                    GR.ddInfoAt = os.clock()
+                end
+                ImGui.Text(GR.ddInfo)
+                local ddButtons = { "DD: capture random zone", "DD: contest this zone", "DD: terror +25", "DD: surrender all zones" }
+                for i, label in ipairs(ddButtons) do
+                    if i > 1 then ImGui.SameLine() end
+                    if ImGui.Button(label) then GR.lastAction = ddSpawner:DebugDD(i - 1) end
+                end
+                if ImGui.Button("TWR: fake vengeance SMS") then GR.lastAction = ddSpawner:DebugTWR(0) end
+                ImGui.SameLine()
+                if ImGui.Button("TWR: fake payment refused") then GR.lastAction = ddSpawner:DebugTWR(1) end
             end
             if ImGui.Button("Save now") then Store.save() end
             ImGui.SameLine()
