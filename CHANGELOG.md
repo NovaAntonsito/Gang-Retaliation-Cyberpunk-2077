@@ -1,6 +1,6 @@
 # Changelog - Gang Retaliation
 
-## [Unreleased / Sin publicar] - integraciones
+## [Unreleased]
 
 ### English
 
@@ -15,6 +15,13 @@
   as escaped.
 - Both work only if the other mod is installed; without it nothing changes.
 
+#### Changed
+- **Quieter Nemesis notifications.** Updates (escapes, rumors, promotions, deaths...) now go to
+  the side log, like looted items, with no sound and no screen buzz. The old big warning in the
+  middle of the screen is still available: Mod Settings > General > "Center-screen notifications".
+- **No notifications during cutscenes.** They wait until quest scenes (e.g. Johnny's memories),
+  braindances and menus are over, then show one by one.
+
 ### Español
 
 #### Agregado
@@ -28,6 +35,58 @@
   probabilidad de emboscada (hasta x1.48). Tus soldados de Drug Dealer nunca se vuelven Némesis, y un
   enemigo que Drug Dealer borra mientras huye ya no cuenta como escapado.
 - Las dos solo actúan si el otro mod está instalado; sin él no cambia nada.
+
+#### Cambiado
+- **Avisos de Némesis más discretos.** Las novedades (escapes, rumores, ascensos, muertes...) ahora
+  van al registro lateral, como los objetos saqueados, sin sonido ni vibración de pantalla. El aviso
+  grande en el centro sigue disponible: Mod Settings > General > "Avisos en el centro de la pantalla".
+- **Sin avisos durante las escenas.** Esperan a que terminen las escenas de misión (p. ej. los
+  recuerdos de Johnny), las danzas cerebrales y los menús, y después salen de a uno.
+
+## [1.3.2] - 2026-11-02
+
+### English
+
+#### Fixed
+- **Jackie (and other allies) could become a Nemesis.** Jackie is a Valentino, so hitting him by
+  accident in a fight made him a candidate. Companions and NPCs friendly to V are now ignored.
+
+#### Changed
+- **Vehicle ambushes start on the street.** The car now spawns next to a car that is already in
+  traffic or parked nearby, facing the same way as the lane and pointing towards V, with a walking
+  path to V. Before, it used any walkable point, which could be a sidewalk or a plaza, so some
+  ambushes ended up on foot. If there is no usable car nearby, it falls back to the old method.
+  Idea taken from They Will Remember.
+- **Ambush cars drive faster** (they used to arrive after V had already left).
+- **NCPD raids no longer pop up in front of V.** They now spawn behind or to the sides, outside a
+  70° cone in front of V and with no line of sight. Every cop and ganger is checked, not just the
+  center of each group (some used to appear in sight, inside walls or on another floor).
+- **NCPD and gangers just staring at each other in raids.** Hostility between the two sides was
+  set only once, when each NPC spawned; if its AI was not ready yet, it stayed passive. Now, every
+  3 seconds, anyone not fighting is pointed at the nearest living enemy (like the passive Nemesis
+  fix for ambushes).
+
+### Español
+
+#### Arreglado
+- **Jackie (y otros aliados) podían volverse Némesis.** Jackie es Valentino, así que pegarle sin
+  querer en una pelea lo volvía candidato. Ahora se ignoran los acompañantes y los NPC amistosos
+  con V.
+
+#### Cambiado
+- **Las emboscadas en vehículo arrancan en la calle.** El auto ahora aparece junto a un auto que ya
+  está en el tráfico o estacionado cerca, mirando como el carril y hacia V, con camino a pie hasta V.
+  Antes usaba cualquier punto caminable, que podía ser una vereda o una plaza, y algunas emboscadas
+  terminaban a pie. Si no hay un auto útil cerca, usa el método anterior. Idea tomada de They Will
+  Remember.
+- **Los autos de emboscada manejan más rápido** (antes llegaban cuando V ya se había ido).
+- **Las redadas de la NCPD ya no aparecen delante de V.** Ahora aparecen detrás o a los costados,
+  fuera de un cono de 70° delante de V y sin línea de vista. Se revisa a cada policía y pandillero,
+  no solo el centro de cada grupo (algunos aparecían a la vista, dentro de paredes o en otro piso).
+- **Policías y pandilleros que se quedaban mirándose en las redadas.** La hostilidad entre los dos
+  bandos se ponía una sola vez, al aparecer cada NPC; si su IA no estaba lista, quedaba pasivo.
+  Ahora, cada 3 segundos, a quien no esté peleando se le marca el enemigo vivo más cercano (como el
+  arreglo de Némesis pasivos en las emboscadas).
 
 ## [1.3.1] - 2026-11-01
 

@@ -91,6 +91,18 @@ public class GRDetection extends ScriptableSystem {
         return NotEquals(GRDetection.GetGang(npc), "");
     }
 
+    // Jackie (Valentino) y otros acompañantes: un golpe de V por error no los vuelve candidatos.
+    public static func IsPlayerAlly(npc: ref<ScriptedPuppet>) -> Bool {
+        if !IsDefined(npc) {
+            return false;
+        }
+        if npc.IsPlayerCompanion() {
+            return true;
+        }
+        let player: ref<PlayerPuppet> = GetPlayer(npc.GetGame());
+        return IsDefined(player) && Equals(GameObject.GetAttitudeBetween(npc, player), EAIAttitude.AIA_Friendly);
+    }
+
     public static func IsNeutralized(npc: ref<ScriptedPuppet>) -> Bool {
         return !IsDefined(npc) || npc.IsDead() || ScriptedPuppet.IsDefeated(npc) || ScriptedPuppet.IsUnconscious(npc);
     }
@@ -434,7 +446,7 @@ public class GRDetection extends ScriptableSystem {
     }
 
     private func OnPlayerHitNPC(npc: ref<ScriptedPuppet>) {
-        if !this.IsEnabled() || !GRDetection.IsEligible(npc) || this.WasPromoted(npc.GetEntityID())
+        if !this.IsEnabled() || !GRDetection.IsEligible(npc) || GRDetection.IsPlayerAlly(npc) || this.WasPromoted(npc.GetEntityID())
             || GRIntegrations.IsDDAlly(npc.GetEntityID()) {
             return;
         }
@@ -496,7 +508,7 @@ public class GRDetection extends ScriptableSystem {
                 npc = GameInstance.FindEntityByID(this.GetGameInstance(), candidate.entityID) as ScriptedPuppet;
             }
             // Si otro mod lo borró, no hay pruebas de que haya escapado.
-            if IsDefined(npc) && !GRDetection.IsNeutralized(npc) {
+            if IsDefined(npc) && !GRDetection.IsNeutralized(npc) && !GRDetection.IsPlayerAlly(npc) {
                 candidate.health = this.GetHealthPercent(npc);
                 candidate.position = npc.GetWorldPosition();
 
