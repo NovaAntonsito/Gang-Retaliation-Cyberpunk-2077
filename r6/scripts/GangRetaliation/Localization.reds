@@ -30,6 +30,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetMaxPerGangDesc", "How many named enemies each gang hierarchy can hold.");
         this.Text("GR-SetBossBar", "Nemesis boss bar");
         this.Text("GR-SetBossBarDesc", "Shows the boss health bar with the Nemesis name when they show up or you hit them. Escorts don't get one.");
+        this.Text("GR-SetNotifyCenter", "Center-screen notifications");
+        this.Text("GR-SetNotifyCenterDesc", "ON: Nemesis updates show as a big warning in the middle of the screen. OFF: they go quietly to the side log (like looted items). Either way they wait until cutscenes, braindances and menus are over.");
         this.Text("GR-SetEscapeHealth", "Wounded escape threshold (%)");
         this.Text("GR-SetEscapeHealthDesc", "A gang member who leaves combat at or below this health becomes a Nemesis.");
         this.Text("GR-SetDebugLog", "Debug log");
@@ -339,6 +341,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetMaxPerGangDesc", "Cuántos enemigos con nombre puede tener la jerarquía de cada banda.");
         this.Text("GR-SetBossBar", "Barra de jefe de los Némesis");
         this.Text("GR-SetBossBarDesc", "Muestra la barra de vida de jefe con el nombre del Némesis cuando aparece o le pegas. La escolta no la tiene.");
+        this.Text("GR-SetNotifyCenter", "Avisos en el centro de la pantalla");
+        this.Text("GR-SetNotifyCenterDesc", "SÍ: las novedades de los Némesis salen como aviso grande en el centro. NO: van discretas al registro lateral (como los objetos saqueados). En los dos casos esperan a que terminen las escenas, las danzas cerebrales y los menús.");
         this.Text("GR-SetEscapeHealth", "Vida para huida herida (%)");
         this.Text("GR-SetEscapeHealthDesc", "Un pandillero que sale del combate con esta vida o menos se convierte en Némesis.");
         this.Text("GR-SetDebugLog", "Log de depuración");

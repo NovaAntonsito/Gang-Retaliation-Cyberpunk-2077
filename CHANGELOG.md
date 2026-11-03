@@ -1,16 +1,30 @@
 # Changelog - Gang Retaliation
 
-## [1.3.1] - 2026-11-01
+## [Unreleased]
+
+### English
+
+#### Changed
+- **Quieter Nemesis notifications.** Updates (escapes, rumors, promotions, deaths...) now go to
+  the side log, like looted items, with no sound and no screen buzz. The old big warning in the
+  middle of the screen is still available: Mod Settings > General > "Center-screen notifications".
+- **No notifications during cutscenes.** They wait until quest scenes (e.g. Johnny's memories),
+  braindances and menus are over, then show one by one.
+
+### Español
+
+#### Cambiado
+- **Avisos de Némesis más discretos.** Las novedades (escapes, rumores, ascensos, muertes...) ahora
+  van al registro lateral, como los objetos saqueados, sin sonido ni vibración de pantalla. El aviso
+  grande en el centro sigue disponible: Mod Settings > General > "Avisos en el centro de la pantalla".
+- **Sin avisos durante las escenas.** Esperan a que terminen las escenas de misión (p. ej. los
+  recuerdos de Johnny), las danzas cerebrales y los menús, y después salen de a uno.
+
+## [1.3.2] - 2026-11-02
 
 ### English
 
 #### Fixed
-- **"I'm back" SMS missing from the phone.** When a Nemesis returned from the ripperdoc, the
-  message only showed as a popup and never reached the inbox. It now goes to the "Unknown number"
-  thread like the ambush threats.
-- **Crashes in big fights and when combat ends.** The game delivers hits, deaths and combat changes
-  on several threads at once. The mod updated its fight lists right there, so two threads could change them together and crash the game (reported with Wraiths in the Badlands). Now those events only queue a call, and the mod handles them on the main
-  thread. Fighters are also kept by ID instead of by reference.
 - **Jackie (and other allies) could become a Nemesis.** Jackie is a Valentino, so hitting him by
   accident in a fight made him a candidate. Companions and NPCs friendly to V are now ignored.
 
@@ -32,15 +46,6 @@
 ### Español
 
 #### Arreglado
-- **SMS de "volví" que no estaba en el teléfono.** Cuando un Némesis volvía del matasanos, el
-  mensaje solo salía como aviso y nunca llegaba a la bandeja. Ahora va al hilo "Número
-  desconocido", como las amenazas de emboscada.
-- **Crashes en peleas grandes y al terminar el combate.** El juego entrega los golpes, las muertes y
-  los cambios de combate en varios hilos a la vez (un escopetazo a un grupo, por ejemplo). El mod
-  actualizaba sus listas de la pelea ahí mismo, así que dos hilos podían tocarlas juntos y el juego
-  crasheaba (reportado con Wraiths en las Badlands). Ahora esos eventos solo agendan una llamada y
-  el mod los procesa en el hilo principal. Los peleadores además se guardan por ID y no por
-  referencia.
 - **Jackie (y otros aliados) podían volverse Némesis.** Jackie es Valentino, así que pegarle sin
   querer en una pelea lo volvía candidato. Ahora se ignoran los acompañantes y los NPC amistosos
   con V.
@@ -59,6 +64,31 @@
   bandos se ponía una sola vez, al aparecer cada NPC; si su IA no estaba lista, quedaba pasivo.
   Ahora, cada 3 segundos, a quien no esté peleando se le marca el enemigo vivo más cercano (como el
   arreglo de Némesis pasivos en las emboscadas).
+
+## [1.3.1] - 2026-11-01
+
+### English
+
+#### Fixed
+- **"I'm back" SMS missing from the phone.** When a Nemesis returned from the ripperdoc, the
+  message only showed as a popup and never reached the inbox. It now goes to the "Unknown number"
+  thread like the ambush threats.
+- **Crashes in big fights and when combat ends.** The game delivers hits, deaths and combat changes
+  on several threads at once. The mod updated its fight lists right there, so two threads could change them together and crash the game (reported with Wraiths in the Badlands). Now those events only queue a call, and the mod handles them on the main
+  thread. Fighters are also kept by ID instead of by reference.
+
+### Español
+
+#### Arreglado
+- **SMS de "volví" que no estaba en el teléfono.** Cuando un Némesis volvía del matasanos, el
+  mensaje solo salía como aviso y nunca llegaba a la bandeja. Ahora va al hilo "Número
+  desconocido", como las amenazas de emboscada.
+- **Crashes en peleas grandes y al terminar el combate.** El juego entrega los golpes, las muertes y
+  los cambios de combate en varios hilos a la vez (un escopetazo a un grupo, por ejemplo). El mod
+  actualizaba sus listas de la pelea ahí mismo, así que dos hilos podían tocarlas juntos y el juego
+  crasheaba (reportado con Wraiths en las Badlands). Ahora esos eventos solo agendan una llamada y
+  el mod los procesa en el hilo principal. Los peleadores además se guardan por ID y no por
+  referencia.
 
 ## [1.3.0] - 2026-10-31
 

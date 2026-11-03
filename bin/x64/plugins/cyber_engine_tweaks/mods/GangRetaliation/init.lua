@@ -71,6 +71,10 @@ local function flushMessages(delta)
     if GR.messageTimer > 0 or #GR.messages == 0 then return end
     local det = getDetection()
     if not det then return end
+    if not det:CanNotify() then
+        GR.messageTimer = 1.0
+        return
+    end
     det:Notify(table.remove(GR.messages, 1))
     GR.messageTimer = 3.5
 end

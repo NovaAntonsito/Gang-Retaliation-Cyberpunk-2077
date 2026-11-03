@@ -60,6 +60,13 @@ public class GRSettings extends ScriptableSystem {
     public let bossBar: Bool = true;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatGeneral")
+    @runtimeProperty("ModSettings.category.order", "10")
+    @runtimeProperty("ModSettings.displayName", "GR-SetNotifyCenter")
+    @runtimeProperty("ModSettings.description", "GR-SetNotifyCenterDesc")
+    public let notifyCenter: Bool = false;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatTriggers")
     @runtimeProperty("ModSettings.category.order", "20")
     @runtimeProperty("ModSettings.displayName", "GR-SetEscapeHealth")
