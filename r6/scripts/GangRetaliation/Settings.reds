@@ -60,6 +60,60 @@ public class GRSettings extends ScriptableSystem {
     public let bossBar: Bool = true;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatGeneral")
+    @runtimeProperty("ModSettings.category.order", "10")
+    @runtimeProperty("ModSettings.displayName", "GR-SetNotifyCenter")
+    @runtimeProperty("ModSettings.description", "GR-SetNotifyCenterDesc")
+    public let notifyCenter: Bool = false;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatToughness")
+    @runtimeProperty("ModSettings.category.order", "15")
+    @runtimeProperty("ModSettings.displayName", "GR-SetHealthSoldier")
+    @runtimeProperty("ModSettings.description", "GR-SetHealthDesc")
+    @runtimeProperty("ModSettings.step", "0.25")
+    @runtimeProperty("ModSettings.min", "1.0")
+    @runtimeProperty("ModSettings.max", "10.0")
+    public let healthSoldier: Float = 1.5;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatToughness")
+    @runtimeProperty("ModSettings.category.order", "15")
+    @runtimeProperty("ModSettings.displayName", "GR-SetHealthLieutenant")
+    @runtimeProperty("ModSettings.description", "GR-SetHealthDesc")
+    @runtimeProperty("ModSettings.step", "0.25")
+    @runtimeProperty("ModSettings.min", "1.0")
+    @runtimeProperty("ModSettings.max", "10.0")
+    public let healthLieutenant: Float = 2.5;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatToughness")
+    @runtimeProperty("ModSettings.category.order", "15")
+    @runtimeProperty("ModSettings.displayName", "GR-SetHealthBoss")
+    @runtimeProperty("ModSettings.description", "GR-SetHealthDesc")
+    @runtimeProperty("ModSettings.step", "0.25")
+    @runtimeProperty("ModSettings.min", "1.0")
+    @runtimeProperty("ModSettings.max", "10.0")
+    public let healthBoss: Float = 4.0;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatToughness")
+    @runtimeProperty("ModSettings.category.order", "15")
+    @runtimeProperty("ModSettings.displayName", "GR-SetLevelMatchV")
+    @runtimeProperty("ModSettings.description", "GR-SetLevelMatchVDesc")
+    public let levelMatchV: Bool = false;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatToughness")
+    @runtimeProperty("ModSettings.category.order", "15")
+    @runtimeProperty("ModSettings.displayName", "GR-SetLevelPerRank")
+    @runtimeProperty("ModSettings.description", "GR-SetLevelPerRankDesc")
+    @runtimeProperty("ModSettings.step", "1")
+    @runtimeProperty("ModSettings.min", "0")
+    @runtimeProperty("ModSettings.max", "10")
+    public let levelPerRank: Int32 = 3;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatTriggers")
     @runtimeProperty("ModSettings.category.order", "20")
     @runtimeProperty("ModSettings.displayName", "GR-SetEscapeHealth")

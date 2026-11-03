@@ -71,6 +71,10 @@ local function flushMessages(delta)
     if GR.messageTimer > 0 or #GR.messages == 0 then return end
     local det = getDetection()
     if not det then return end
+    if not det:CanNotify() then
+        GR.messageTimer = 1.0
+        return
+    end
     det:Notify(table.remove(GR.messages, 1))
     GR.messageTimer = 3.5
 end
@@ -1196,6 +1200,23 @@ registerForEvent("onDraw", function()
             if ImGui.Button("Debug: skirmish now") then
                 local ok, res = pcall(trySkirmish, true)
                 GR.lastAction = tostring(res)
+            end
+            -- Drug Dealer (la logica esta en GRSpawner.DebugDD / GRIntegrations)
+            local ddSpawner = getSpawner()
+            if ddSpawner then
+                if not GR.ddInfoAt or os.clock() - GR.ddInfoAt > 1 then
+                    GR.ddInfo = ddSpawner:GetDDDebugInfo()
+                    GR.ddInfoAt = os.clock()
+                end
+                ImGui.Text(GR.ddInfo)
+                local ddButtons = { "DD: capture random zone", "DD: contest this zone", "DD: terror +25", "DD: surrender all zones" }
+                for i, label in ipairs(ddButtons) do
+                    if i > 1 then ImGui.SameLine() end
+                    if ImGui.Button(label) then GR.lastAction = ddSpawner:DebugDD(i - 1) end
+                end
+                if ImGui.Button("TWR: fake vengeance SMS") then GR.lastAction = ddSpawner:DebugTWR(0) end
+                ImGui.SameLine()
+                if ImGui.Button("TWR: fake payment refused") then GR.lastAction = ddSpawner:DebugTWR(1) end
             end
             if ImGui.Button("Save now") then Store.save() end
             ImGui.SameLine()

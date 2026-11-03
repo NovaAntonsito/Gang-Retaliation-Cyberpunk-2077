@@ -246,7 +246,7 @@ public class GRDetection extends ScriptableSystem {
             return;
         }
         let health: Float = this.GetHealthPercent(last);
-        if health > 0.0 && health <= Cast<Float>(settings.fleeHealthPercent) {
+        if health > 0.0 && health <= GRIntegrations.GetFleePercent(settings.fleeHealthPercent) {
             this.m_someoneFled = true;
             this.m_pendingFlee = last.GetEntityID();
             this.m_hasPendingFlee = true;
@@ -615,7 +615,35 @@ public class GRDetection extends ScriptableSystem {
         return ArraySize(this.m_candidates);
     }
 
+    // Los avisos esperan si V esta en una escena de mision (tier 3-5: cinematicas, recuerdos de Johnny),
+    // en una danza cerebral o en un menu. Tier 1-2 (calle, departamento) si se muestran.
+    public func CanNotify() -> Bool {
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) {
+            return false;
+        }
+        let tier: Int32 = player.GetPlayerStateMachineBlackboard().GetInt(GetAllBlackboardDefs().PlayerStateMachine.HighLevel);
+        if tier >= 3 && tier <= 5 {
+            return false;
+        }
+        if GameInstance.GetBlackboardSystem(gi).Get(GetAllBlackboardDefs().UI_System).GetBool(GetAllBlackboardDefs().UI_System.IsInMenu) {
+            return false;
+        }
+        let bd: ref<BraindanceSystem> = GameInstance.GetScriptableSystemsContainer(gi).Get(n"BraindanceSystem") as BraindanceSystem;
+        if IsDefined(bd) && bd.GetIsInBraindance() {
+            return false;
+        }
+        return true;
+    }
+
+    // Por defecto al registro lateral (sin sonido ni vibracion); el aviso grande del centro es opcional.
     public func Notify(text: String) {
+        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
+        if !IsDefined(settings) || !settings.notifyCenter {
+            GameInstance.GetActivityLogSystem(this.GetGameInstance()).AddLog(text);
+            return;
+        }
         let msg: SimpleScreenMessage;
         msg.isShown = true;
         msg.duration = 6.0;

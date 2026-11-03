@@ -22,6 +22,15 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-ModName", "Gang Retaliation");
         this.Text("GR-CatGeneral", "General");
         this.Text("GR-CatTriggers", "Nemesis triggers");
+        this.Text("GR-CatToughness", "Nemesis toughness");
+        this.Text("GR-SetHealthSoldier", "Soldier health");
+        this.Text("GR-SetHealthLieutenant", "Lieutenant health");
+        this.Text("GR-SetHealthBoss", "Boss health");
+        this.Text("GR-SetHealthDesc", "Health multiplier for Nemeses of this rank (1 = same as a regular ganger). Escorts are not affected. Applies the next time they show up.");
+        this.Text("GR-SetLevelMatchV", "Level based on V");
+        this.Text("GR-SetLevelMatchVDesc", "OFF: Nemeses have the level of the district, like any ganger (default). ON: they match V's level, plus the extra per rank below.");
+        this.Text("GR-SetLevelPerRank", "Extra levels per rank");
+        this.Text("GR-SetLevelPerRankDesc", "Only with \"Level based on V\". Lieutenants get this much above V, Bosses twice as much. Soldiers stay at V's level.");
         this.Text("GR-CatDebug", "Debug");
 
         this.Text("GR-SetEnabled", "Enable mod");
@@ -30,6 +39,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetMaxPerGangDesc", "How many named enemies each gang hierarchy can hold.");
         this.Text("GR-SetBossBar", "Nemesis boss bar");
         this.Text("GR-SetBossBarDesc", "Shows the boss health bar with the Nemesis name when they show up or you hit them. Escorts don't get one.");
+        this.Text("GR-SetNotifyCenter", "Center-screen notifications");
+        this.Text("GR-SetNotifyCenterDesc", "ON: Nemesis updates show as a big warning in the middle of the screen. OFF: they go quietly to the side log (like looted items). Either way they wait until cutscenes, braindances and menus are over.");
         this.Text("GR-SetEscapeHealth", "Wounded escape threshold (%)");
         this.Text("GR-SetEscapeHealthDesc", "A gang member who leaves combat at or below this health becomes a Nemesis.");
         this.Text("GR-SetDebugLog", "Debug log");
@@ -108,6 +119,11 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-MenuNoWar", "No war. The gangs here get along, for now.");
         this.Text("GR-MenuGangStrength", "Gang strength");
         this.Text("GR-MenuWeakened", "WEAKENED");
+        this.Text("GR-MenuDDControlled", "TAKEN BY V");
+        this.Text("GR-MenuDDContested", "CONTESTED BY V");
+        this.Text("GR-MenuDDDetailControlled", "Drug Dealer: V runs this zone (%d%). Its gangs want it back and hunt V more often here.");
+        this.Text("GR-MenuDDDetailContested", "Drug Dealer: V is fighting for this zone (%d%). Its gangs are on edge and ambush a bit more.");
+        this.Text("GR-MenuDDLost", "Territory lost to V:");
         this.Text("GR-MenuWeakNote", "-%d: V killed %d Nemeses");
         this.Text("GR-MenuRumors", "Recent rumors");
         this.Text("GR-MenuNoRumors", "Nothing new on the streets yet.");
@@ -273,6 +289,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-Gig-2", "Nobody hits my crew without hearing from me!");
         this.Text("GR-Gig-3", "Knew the fixer would send you. Been waiting.");
         this.Text("GR-MsgAmbush", "Ambush! %s found you.");
+        this.Text("GR-MsgTWRThreat", "%n (%g) texted you: the %g are coming for you. Watch your back.");
+        this.Text("GR-MsgTWRRefuse", "%n (%g) turned down your payment. The %g may forget. %n won't.");
         this.Text("GR-Ambush-1", "Remember me, V? 'Cause I remember you.");
         this.Text("GR-Ambush-2", "Told you I'd come back.");
         this.Text("GR-Ambush-3", "You left me alive. Big mistake.");
@@ -333,6 +351,15 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-ModName", "Gang Retaliation");
         this.Text("GR-CatGeneral", "General");
         this.Text("GR-CatTriggers", "Creación de Némesis");
+        this.Text("GR-CatToughness", "Dureza de los Némesis");
+        this.Text("GR-SetHealthSoldier", "Vida de los Soldados");
+        this.Text("GR-SetHealthLieutenant", "Vida de los Tenientes");
+        this.Text("GR-SetHealthBoss", "Vida de los Jefes");
+        this.Text("GR-SetHealthDesc", "Multiplicador de vida de los Némesis de este rango (1 = igual que un pandillero común). No afecta a la escolta. Se aplica la próxima vez que aparezcan.");
+        this.Text("GR-SetLevelMatchV", "Nivel según V");
+        this.Text("GR-SetLevelMatchVDesc", "NO: los Némesis tienen el nivel del distrito, como cualquier pandillero (por defecto). SÍ: tienen el nivel de V, más el extra por rango de abajo.");
+        this.Text("GR-SetLevelPerRank", "Niveles extra por rango");
+        this.Text("GR-SetLevelPerRankDesc", "Solo con \"Nivel según V\". Los Tenientes quedan esto por encima de V y los Jefes el doble. Los Soldados quedan al nivel de V.");
         this.Text("GR-CatDebug", "Depuración");
 
         this.Text("GR-SetEnabled", "Activar mod");
@@ -341,6 +368,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetMaxPerGangDesc", "Cuántos enemigos con nombre puede tener la jerarquía de cada banda.");
         this.Text("GR-SetBossBar", "Barra de jefe de los Némesis");
         this.Text("GR-SetBossBarDesc", "Muestra la barra de vida de jefe con el nombre del Némesis cuando aparece o le pegas. La escolta no la tiene.");
+        this.Text("GR-SetNotifyCenter", "Avisos en el centro de la pantalla");
+        this.Text("GR-SetNotifyCenterDesc", "SÍ: las novedades de los Némesis salen como aviso grande en el centro. NO: van discretas al registro lateral (como los objetos saqueados). En los dos casos esperan a que terminen las escenas, las danzas cerebrales y los menús.");
         this.Text("GR-SetEscapeHealth", "Vida para huida herida (%)");
         this.Text("GR-SetEscapeHealthDesc", "Un pandillero que sale del combate con esta vida o menos se convierte en Némesis.");
         this.Text("GR-SetDebugLog", "Log de depuración");
@@ -419,6 +448,11 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-MenuNoWar", "Sin guerra. Las bandas presentes conviven por ahora.");
         this.Text("GR-MenuGangStrength", "Fuerza de las bandas");
         this.Text("GR-MenuWeakened", "DEBILITADA");
+        this.Text("GR-MenuDDControlled", "EN MANOS DE V");
+        this.Text("GR-MenuDDContested", "DISPUTADO CON V");
+        this.Text("GR-MenuDDDetailControlled", "Drug Dealer: V manda en esta zona (%d%). Sus bandas la quieren recuperar y buscan a V más seguido acá.");
+        this.Text("GR-MenuDDDetailContested", "Drug Dealer: V le disputa esta zona a las bandas (%d%). Están nerviosas y emboscan un poco más.");
+        this.Text("GR-MenuDDLost", "Territorio perdido ante V:");
         this.Text("GR-MenuWeakNote", "-%d: V mató %d Némesis");
         this.Text("GR-MenuRumors", "Rumores recientes");
         this.Text("GR-MenuNoRumors", "Todavía no hay novedades en la calle.");
@@ -584,6 +618,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-Gig-2", "¡Nadie toca a mi gente sin vérselas conmigo!");
         this.Text("GR-Gig-3", "Sabía que el fixer te mandaría a ti. Te estaba esperando.");
         this.Text("GR-MsgAmbush", "¡Emboscada! %s te ha encontrado.");
+        this.Text("GR-MsgTWRThreat", "%n (%g) te escribió: los %g van a por ti. Cuídate la espalda.");
+        this.Text("GR-MsgTWRRefuse", "%n (%g) rechazó tu pago. Los %g pueden olvidar. %n no.");
         this.Text("GR-Ambush-1", "¿Te acuerdas de mí, V? Porque yo de ti sí.");
         this.Text("GR-Ambush-2", "Te dije que volvería.");
         this.Text("GR-Ambush-3", "Me dejaste con vida. Gran error.");

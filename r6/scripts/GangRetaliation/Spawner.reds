@@ -1,5 +1,7 @@
 module GangRetaliation
 
+import Codeware.Localization.*
+
 public class GRSpawner extends ScriptableSystem {
     private let m_entityIDs: array<EntityID>;
 
@@ -550,6 +552,28 @@ public class GRSpawner extends ScriptableSystem {
 
     public func GetHeatFactor() -> Float {
         return GRIntegrations.GetHeatFactor(this.GetGameInstance(), this.GetDistrictGangs());
+    }
+
+    // Panel dev: debug de Drug Dealer. 0 capturar zona al azar, 1 disputar la actual, 2 +25 terror, 3 soltar zonas.
+    public func DebugDD(action: Int32) -> String {
+        switch action {
+            case 0: return GRIntegrations.DebugCaptureRandomTurf();
+            case 1: return GRIntegrations.DebugContestCurrentTurf();
+            case 2: return GRIntegrations.DebugAddTerror();
+            case 3: return GRIntegrations.DebugSurrenderAllTurfs();
+            default: return "";
+        }
+    }
+
+    // Panel dev: 0 = simular venganza de TWR, 1 = simular perdon pagado y rechazado.
+    public func DebugTWR(action: Int32) -> String {
+        let watch: ref<GRTWRWatch> = GRTWRWatch.Get(this.GetGameInstance());
+        return IsDefined(watch) ? watch.Debug(action) : "TWR watch not ready";
+    }
+
+    public func GetDDDebugInfo() -> String {
+        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
+        return GRIntegrations.GetDDDebugInfo(IsDefined(settings) ? settings.fleeHealthPercent : 35);
     }
 
     // They Will Remember manda sus propias venganzas (tag TheyWillRemember.Squad): no sumar otra encima.
@@ -1253,6 +1277,10 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func Tick() {
+        let twr: ref<GRTWRWatch> = GRTWRWatch.Get(this.GetGameInstance());
+        if IsDefined(twr) {
+            twr.Tick();
+        }
         this.CheckNeutralized();
         this.CheckTaunts();
         this.TickImmunity();
@@ -1386,6 +1414,54 @@ public class GRSpawner extends ScriptableSystem {
         return ArraySize(this.m_entityIDs);
     }
 
+    // Rango por el nombre que manda CET ("Jefe ...", "Teniente ..."; los Soldados van sin prefijo).
+    private func RankOfSpeaker(speaker: String) -> Int32 {
+        let loc: ref<LocalizationSystem> = LocalizationSystem.GetInstance(this.GetGameInstance());
+        let bossKeys: array<String> = ["GR-RankBoss", "GR-RankBossF"];
+        for key in bossKeys {
+            let label: String = loc.GetText(key);
+            if StrLen(label) > 0 && StrBeginsWith(speaker, label + " ") {
+                return 3;
+            }
+        }
+        let lieutenant: String = loc.GetText("GR-RankLieutenant");
+        if StrLen(lieutenant) > 0 && StrBeginsWith(speaker, lieutenant + " ") {
+            return 2;
+        }
+        return 1;
+    }
+
+    // Nemesis mas duros: vida x ajuste del rango y, si esta activado, nivel de V + extra por rango.
+    // Los modificadores viven en la entidad: al borrarla se van con ella.
+    private func ApplyToughness(index: Int32, npc: ref<ScriptedPuppet>) {
+        let gi: GameInstance = this.GetGameInstance();
+        let settings: ref<GRSettings> = GRSettings.Get(gi);
+        let stats: ref<StatsSystem> = GameInstance.GetStatsSystem(gi);
+        if !IsDefined(settings) || !IsDefined(stats) {
+            return;
+        }
+        let rank: Int32 = this.RankOfSpeaker(this.m_speakers[index]);
+        let id: StatsObjectID = Cast<StatsObjectID>(npc.GetEntityID());
+        let health: Float = rank == 3 ? settings.healthBoss : (rank == 2 ? settings.healthLieutenant : settings.healthSoldier);
+        if health > 1.0 {
+            stats.AddModifier(id, RPGManager.CreateStatModifier(gamedataStatType.Health, gameStatModifierType.Multiplier, health));
+        }
+        let level: String = "district";
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if settings.levelMatchV && IsDefined(player) {
+            let playerId: StatsObjectID = Cast<StatsObjectID>(player.GetEntityID());
+            let extra: Float = Cast<Float>((rank - 1) * settings.levelPerRank);
+            let powerLevel: Float = stats.GetStatValue(playerId, gamedataStatType.PowerLevel) + extra;
+            // Igual que NPCManager.ScaleToPlayer del juego: se quita lo anterior y se pone el valor final.
+            stats.RemoveAllModifiers(id, gamedataStatType.PowerLevel);
+            stats.AddModifier(id, RPGManager.CreateStatModifier(gamedataStatType.PowerLevel, gameStatModifierType.Additive, powerLevel));
+            stats.RemoveAllModifiers(id, gamedataStatType.Level);
+            stats.AddModifier(id, RPGManager.CreateStatModifier(gamedataStatType.Level, gameStatModifierType.Additive, stats.GetStatValue(playerId, gamedataStatType.Level) + extra));
+            level = FloatToStringPrec(powerLevel, 0);
+        }
+        GRLog("Nemesis #" + IntToString(this.m_nemesisIDs[index]) + ": rango " + IntToString(rank) + ", vida x" + FloatToStringPrec(health, 2) + ", nivel " + level);
+    }
+
     private cb func OnEntityEvent(event: ref<DynamicEntityEvent>) {
         let index: Int32 = this.IndexOf(event.GetEntityID());
         if index < 0 {
@@ -1396,6 +1472,9 @@ public class GRSpawner extends ScriptableSystem {
         if Equals(eventType, DynamicEntityEventType.Spawned) {
             let npc: ref<ScriptedPuppet> = GameInstance.GetDynamicEntitySystem().GetEntity(event.GetEntityID()) as ScriptedPuppet;
             let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+            if IsDefined(npc) && this.m_nemesisIDs[index] > 0 {
+                this.ApplyToughness(index, npc);
+            }
             if IsDefined(npc) && IsDefined(player) && this.m_raidMode {
                 this.SetRaidHostility(index, npc);
                 if this.m_nemesisIDs[index] > 0 && !this.m_hasMappin[index] {
