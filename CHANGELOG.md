@@ -37,34 +37,7 @@
 
 ### Español
 
-#### Agregado
-- **Integración con They Will Remember (opcional).** Cuando un escuadrón de venganza de TWR de una
-  banda con Némesis vivo pelea con V, ese Némesis puede sumarse y encabezarlo (misma probabilidad
-  que los refuerzos de gigs). El rencor de TWR (banda hostil, muertes recientes) sube la
-  probabilidad de emboscada, hasta x2.
-  - **Aviso de venganza:** cuando TWR elige una banda para vengarse, su Jefe o Teniente Némesis que
-    conoce a V le escribe antes (mensajes nuevos en el hilo "Número desconocido").
-  - **La plata no compra a un Némesis:** si V le paga el perdón de TWR a una banda, TWR olvida, pero
-    su Jefe o Teniente Némesis lo rechaza por SMS. Sus emboscadas bajan a la mitad durante 3 días de
-    juego.
-- **Integración con Drug Dealer (opcional).** Las emboscadas, redadas y escaramuzas de Gang
-  Retaliation esperan mientras una misión de Drug Dealer tenga enemigos vivos. Un Némesis puede
-  aparecer con la banda que ataca tu negocio o defiende su territorio. Tu rango de traficante sube la
-  probabilidad de emboscada (hasta x1.48). Tus soldados de Drug Dealer nunca se vuelven Némesis, y un
-  enemigo que Drug Dealer borra mientras huye ya no cuenta como escapado.
-  - **Territorio:** en una zona que V disputa en Drug Dealer, sus bandas emboscan más (x1.25); en una
-    zona que V controla, la quieren recuperar (x1.5). El menú NÉMESIS lo muestra: "EN MANOS DE V" /
-    "DISPUTADO CON V" en cada barrio, una línea en el detalle del distrito y "Territorio perdido ante V: ..." en
-    cada banda.
-  - **Terror:** el terror de Drug Dealer hace que los pandilleros huyan antes (hasta +15% en la vida
-    para huir; la marca de huida de la barra de vida se mueve con él).
-- Las dos solo actúan si el otro mod está instalado; sin él no cambia nada.
-
 #### Cambiado
-- **Némesis más duros.** Tenían la misma vida que un pandillero común. Ahora la vida sube con el
-  rango: Soldado x1.5, Teniente x2.5, Jefe x4 (la escolta no cambia). Categoría nueva en Mod Settings,
-  "Dureza de los Némesis", para ajustar cada rango, más un "Nivel según V" opcional (apagado por
-  defecto: nivel del distrito, como antes) con niveles extra por rango.
 - **Avisos de Némesis más discretos.** Las novedades (escapes, rumores, ascensos, muertes...) ahora
   van al registro lateral, como los objetos saqueados, sin sonido ni vibración de pantalla. El aviso
   grande en el centro sigue disponible: Mod Settings > General > "Avisos en el centro de la pantalla".
