@@ -123,7 +123,7 @@ public class GRTraits extends ScriptableSystem {
         let gi: GameInstance = hitEvent.target.GetGame();
         let spawner: ref<GRSpawner> = GRSpawner.Get(gi);
         let traits: ref<GRTraits> = GRTraits.Get(gi);
-        if !IsDefined(spawner) || !IsDefined(traits) || spawner.GetSpawnedCount() == 0 {
+        if !IsDefined(spawner) || !IsDefined(traits) || !spawner.HasOwnSpawns() {
             return;
         }
 
@@ -201,6 +201,13 @@ public class GRTraits extends ScriptableSystem {
 @wrapMethod(DamageSystem)
 private final func CalculateSourceModifiers(hitEvent: ref<gameHitEvent>, cache: ref<CacheData>) -> Void {
     wrappedMethod(hitEvent, cache);
+    let prof: ref<GRProfiler> = IsDefined(hitEvent.target) ? GRProfiler.Get(hitEvent.target.GetGame()) : null;
+    if IsDefined(prof) {
+        prof.hits += 1;
+        if prof.hooksOff {
+            return;
+        }
+    }
     GRTraits.OnHit(hitEvent);
 }
 

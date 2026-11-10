@@ -17,6 +17,10 @@ public class GRWar extends ScriptableSystem {
     // Por que fallo el ultimo Start (para la ventana de debug).
     private let m_lastError: String;
 
+    public func GRProfState() -> String {
+        return "war=" + IntToString(ArraySize(this.m_entityIDs));
+    }
+
     public static func Get(gi: GameInstance) -> ref<GRWar> {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRWar") as GRWar;
     }
@@ -286,9 +290,24 @@ public class GRWar extends ScriptableSystem {
             this.m_start = this.Now() - 150.0;
         }
         if elapsed > 180.0 || !IsDefined(player) {
-            GRLog("Fin de escaramuza: limpiando");
-            this.Despawn();
+            this.Release();
         }
+    }
+
+    // Fin normal: los sobrantes del spawner se van y se borran cuando V no los ve (no de golpe a la vista).
+    private func Release() {
+        let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
+        if !IsDefined(spawner) {
+            this.Despawn();
+            return;
+        }
+        for id in this.m_entityIDs {
+            spawner.AddLeftover(id, 0, "");
+        }
+        GRLog("Fin de escaramuza: " + IntToString(ArraySize(this.m_entityIDs)) + " se borran cuando V no los vea");
+        ArrayClear(this.m_entityIDs);
+        ArrayClear(this.m_sides);
+        this.m_active = false;
     }
 
     public func Despawn() {

@@ -39,6 +39,16 @@ function Store.load()
     if ok and type(decoded) == "table" and type(decoded.campaigns) == "table" then
         Store.data = decoded
         for key, campaign in pairs(Store.data.campaigns) do
+            -- Antes de 1.3.2 Jackie podia volverse Nemesis por un golpe de V: se borra de partidas viejas.
+            if type(campaign.nemeses) == "table" then
+                for i = #campaign.nemeses, 1, -1 do
+                    local record = campaign.nemeses[i].recordID
+                    if type(record) == "string" and record:lower():find("jackie", 1, true) then
+                        table.remove(campaign.nemeses, i)
+                        Store.dirty = true
+                    end
+                end
+            end
             if type(campaign.nemeses) ~= "table" or (#campaign.nemeses == 0 and #(campaign.homes or {}) == 0) then
                 Store.data.campaigns[key] = nil
                 Store.dirty = true

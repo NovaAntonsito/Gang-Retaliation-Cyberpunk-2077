@@ -51,6 +51,13 @@ private let m_grCanFlee: Bool;
 @wrapMethod(NameplateVisualsLogicController)
 public final func SetVisualData(puppet: ref<GameObject>, const incomingData: script_ref<NPCNextToTheCrosshair>, opt isNewNpc: Bool) -> Void {
     wrappedMethod(puppet, incomingData, isNewNpc);
+    let prof: ref<GRProfiler> = GRProfiler.Get(puppet.GetGame());
+    if IsDefined(prof) {
+        prof.nameplates += 1;
+        if prof.hooksOff {
+            return;
+        }
+    }
     this.GRUpdateNameplate(this.m_cachedPuppet as ScriptedPuppet);
 }
 
@@ -231,7 +238,13 @@ public class GRHud extends ScriptableSystem {
 
     public func Tick() {
         let session: Int32 = this.m_session;
-        this.Update();
+        let prof: ref<GRProfiler> = GRProfiler.Get(this.GetGameInstance());
+        if IsDefined(prof) {
+            prof.hudTicks += 1;
+        }
+        if !IsDefined(prof) || !prof.hooksOff {
+            this.Update();
+        }
         if session == this.m_session {
             this.ScheduleTick();
         }
@@ -580,5 +593,58 @@ public class GRHud extends ScriptableSystem {
             return aNemesis;
         }
         return a.distance < b.distance;
+    }
+}
+
+// --- Medidor de rendimiento (panel dev de CET) ---
+// Redscript no tiene un reloj fino, asi que aca solo se cuentan las llamadas de los hooks que corren solos
+// (sin Lua). El benchmark de CET apaga estos hooks con SetHooksOff y compara los FPS con y sin ellos.
+public class GRProfiler extends ScriptableSystem {
+    public let hooksOff: Bool;
+    public let nameplates: Int32;
+    public let hudTicks: Int32;
+    public let hits: Int32;
+    public let vehicles: Int32;
+
+    public static func Get(gi: GameInstance) -> ref<GRProfiler> {
+        return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRProfiler") as GRProfiler;
+    }
+
+    public func SetHooksOff(off: Bool) {
+        this.hooksOff = off;
+    }
+
+    // Llamadas desde la ultima lectura, y vuelve a cero.
+    public func TakeCounts() -> String {
+        let s: String = "nameplates=" + IntToString(this.nameplates) + " hudTicks=" + IntToString(this.hudTicks)
+            + " hits=" + IntToString(this.hits) + " vehicles=" + IntToString(this.vehicles);
+        this.nameplates = 0;
+        this.hudTicks = 0;
+        this.hits = 0;
+        this.vehicles = 0;
+        return s;
+    }
+
+    // Cuantas cosas del mod hay vivas ahora (listas que se recorren en los ticks).
+    public func GetState() -> String {
+        let gi: GameInstance = this.GetGameInstance();
+        let s: String = "";
+        let spawner: ref<GRSpawner> = GRSpawner.Get(gi);
+        if IsDefined(spawner) {
+            s += spawner.GRProfState() + " ";
+        }
+        let det: ref<GRDetection> = GRDetection.Get(gi);
+        if IsDefined(det) {
+            s += det.GRProfState() + " ";
+        }
+        let war: ref<GRWar> = GRWar.Get(gi);
+        if IsDefined(war) {
+            s += war.GRProfState() + " ";
+        }
+        let traffic: ref<GRTraffic> = GRTraffic.Get(gi);
+        if IsDefined(traffic) {
+            s += traffic.GRProfState();
+        }
+        return s;
     }
 }

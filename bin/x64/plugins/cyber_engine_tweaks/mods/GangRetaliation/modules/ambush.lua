@@ -14,23 +14,34 @@ function Ambush.hasMetV(n)
     return (n.encounters or 1) > 0 or (n.gigs or 0) > 0 or (n.ambushes or 0) > 0
 end
 
-function Ambush.pick(nemeses, districtGangs, metOnly)
-    local pool, total = {}, 0
+-- Dias de juego que un Nemesis espera despues de escapar de V antes de poder emboscarlo (tiempo para crecer).
+Ambush.escapeRestDays = 1
+
+-- today (dia de juego) solo lo pasan las emboscadas: deja fuera a los que escaparon hace menos de
+-- escapeRestDays y los devuelve como segundo valor. Sin escapedDay (partidas viejas) no hay espera.
+function Ambush.pick(nemeses, districtGangs, metOnly, today)
+    local pool, total, resting = {}, 0, {}
     for _, n in ipairs(nemeses) do
         if n.status ~= "dead" and not n.jailedUntil and n.recordID and n.id and (not metOnly or Ambush.hasMetV(n)) then
-            local weight = (n.rank or 1) * (districtGangs[n.gang] and 4 or 1)
-            total = total + weight
-            table.insert(pool, { n = n, w = weight })
+            local since = today and n.escapedDay and (today - n.escapedDay)
+            -- since < 0: se cargo una partida anterior al escape; no se lo deja esperando de mas.
+            if since and since >= 0 and since < Ambush.escapeRestDays then
+                table.insert(resting, n)
+            else
+                local weight = (n.rank or 1) * (districtGangs[n.gang] and 4 or 1)
+                total = total + weight
+                table.insert(pool, { n = n, w = weight })
+            end
         end
     end
-    if total == 0 then return nil end
+    if total == 0 then return nil, resting end
 
     local roll = math.random() * total
     for _, entry in ipairs(pool) do
         roll = roll - entry.w
-        if roll <= 0 then return entry.n end
+        if roll <= 0 then return entry.n, resting end
     end
-    return pool[#pool].n
+    return pool[#pool].n, resting
 end
 
 Ambush.policeRecords = {

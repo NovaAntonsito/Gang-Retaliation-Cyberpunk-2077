@@ -28,6 +28,10 @@ public class GRTraffic extends ScriptableSystem {
         if !IsDefined(vehicle) {
             return;
         }
+        let prof: ref<GRProfiler> = GRProfiler.Get(vehicle.GetGame());
+        if IsDefined(prof) {
+            prof.vehicles += 1;
+        }
         RWLock.Acquire(this.m_lock);
         // Los descargados quedan como wref vacias: se limpian aca para que la lista no crezca sin fin.
         if ArraySize(this.m_vehicles) > 120 {
@@ -41,6 +45,13 @@ public class GRTraffic extends ScriptableSystem {
         }
         ArrayPush(this.m_vehicles, vehicle);
         RWLock.Release(this.m_lock);
+    }
+
+    public func GRProfState() -> String {
+        RWLock.AcquireShared(this.m_lock);
+        let n: Int32 = ArraySize(this.m_vehicles);
+        RWLock.ReleaseShared(this.m_lock);
+        return "trafficList=" + IntToString(n);
     }
 
     // Copia (mezclada) de los vehiculos que siguen cargados.

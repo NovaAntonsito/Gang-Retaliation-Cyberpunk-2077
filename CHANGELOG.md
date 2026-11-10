@@ -1,6 +1,89 @@
 # Changelog - Gang Retaliation
 
-## [Unreleased]
+## [1.3.4] - 2026-11-10
+
+### English
+
+#### Fixed
+- **Fleeing gangers now really get away.** Before, a ganger from the world who fled turned back to
+  fight after 30 m and V almost always killed them, so nobody escaped. Now they run in panic the way
+  civilians do and keep running. Once V loses sight of them, or they are still alive when the fight
+  ends, they become a Nemesis. If V catches up and shoots them, they fight again.
+- **No more escapes in plain sight.** An ambush escort used to count as escaped after 25 s even if V
+  was looking at them from 10 m away. Now they escape after 3 s out of V's sight and more than 25 m
+  away, or after passing 50 m. If they can't break line of sight in 60 s, they turn and fight.
+- **A fight that ended while someone was running no longer erases the escape.** If they came back
+  to fight and survived, they used to be forgotten. Now they still count as fled.
+- **They start running right away.** Before, the escape waited up to 1 s, and V could finish them
+  off first.
+- **Ambush escorts no longer get pulled back into the fight while fleeing.** The check that wakes up
+  passive ambushers was treating a fleeing escort as passive and sending them back at V.
+- **"Last one standing" really means last.** Before, only gangers that had shot or been shot counted,
+  so one could flee while friends were still arriving. Now the enemies V is tracking count too.
+- **Nobody vanishes in front of V anymore.** When an ambush, NCPD raid or gang skirmish ended,
+  everyone it had spawned (survivors, bodies and the ambush car) was deleted at once, even in plain
+  sight, and a fleeing escort could blink out mid-run. Now survivors stop fighting and walk away,
+  and each one is removed only when V isn't looking: survivors out of sight past 30 m (or 80 m
+  anywhere), bodies out of sight, and the car out of sight and never while V is driving it.
+  A Nemesis killed while walking away still counts as killed.
+- **Panic escape.** When the last one standing flees, the game's own panic reaction takes over, with
+  a higher priority than combat, so they bolt in plain sight instead of turning around to fight
+  again or blinking across the street in front of V. A Nemesis's icon and boss bar disappear right
+  away. They count as fled and come back as a Nemesis.
+- **A far-off or idle enemy no longer blocks the escape.** The "last one standing" check counted any
+  hostile V had tracked, even one far away or not fighting, so nobody fled. Now only enemies in
+  combat within 40 m count.
+- **Indirect kills now count for V.** If V blew up a car with a Nemesis inside (shooting it until it
+  explodes or with the self-destruct quickhack) or took them down from a grab (lethal or not), the
+  mod said "nobody knows who did it" and the gang lost no strength. Those kills left no hit from V
+  to read, so the mod now also checks who the game itself blames for the death.
+- **A Nemesis who just escaped no longer ambushes right away.** They wait at least 1 game day after
+  escaping V before their next ambush, so they have time to grow. Other Nemeses can still ambush
+  in the meantime. Saves from older versions are not affected until the next escape.
+
+### Español
+
+#### Arreglado
+- **Los pandilleros que huyen ahora escapan de verdad.** Antes, un pandillero del mundo que huía
+  volvía a pelear a los 30 m y V casi siempre lo mataba, así que nadie escapaba. Ahora corre en
+  pánico como los civiles y sigue corriendo. Cuando V lo pierde de vista, o si sigue vivo al terminar
+  el combate, pasa a ser Némesis. Si V lo alcanza y le dispara, vuelve a pelear.
+- **Ya no escapan a la vista.** Un escolta de emboscada contaba como escapado a los 25 s aunque V lo
+  estuviera mirando a 10 m. Ahora escapa tras 3 s fuera de la vista de V y a más de 25 m, o al pasar
+  50 m. Si en 60 s no logra perderse de vista, se da vuelta y pelea.
+- **Si el combate terminaba mientras alguien corría, se perdía su huida.** Si después volvía a
+  pelear y sobrevivía, se olvidaba. Ahora sigue contando como huido.
+- **Empiezan a correr enseguida.** Antes la huida esperaba hasta 1 s y V podía rematarlo antes.
+- **Las escoltas de emboscada ya no vuelven a la pelea mientras huyen.** El control que despierta a
+  los emboscados pasivos tomaba como pasivo al que huía y lo mandaba de nuevo contra V.
+- **"El último en pie" es de verdad el último.** Antes solo contaban los que habían disparado o
+  recibido un tiro, así que uno podía huir con compañeros todavía llegando. Ahora también cuentan
+  los enemigos que V tiene detectados.
+- **Ya nadie desaparece delante de V.** Al terminar una emboscada, una redada de la NCPD o una
+  escaramuza entre bandas, se borraba de golpe todo lo que había generado (sobrevivientes, cadáveres
+  y el auto de la emboscada), aunque V lo estuviera mirando, y un escolta que huía podía esfumarse
+  en plena carrera. Ahora los sobrevivientes dejan de pelear y se van caminando, y cada uno se borra
+  solo cuando V no lo mira: los vivos fuera de la vista a más de 30 m (o a más de 80 m), los
+  cadáveres fuera de la vista, y el auto fuera de la vista y nunca con V manejándolo. Un Némesis
+  que muere mientras se va sigue contando como muerto.
+- **Huida en pánico.** Cuando el último en pie huye, toma el control la reacción de pánico del propio
+  juego, con más prioridad que el combate. Así sale corriendo a la vista en vez de darse vuelta a
+  pelear de nuevo o teletransportarse al otro lado de la calle delante de V. El ícono y la barra de
+  jefe de un Némesis se van enseguida. Cuenta como huido y vuelve como Némesis.
+- **Un enemigo lejano o quieto ya no frena la huida.** El control de "último en pie" contaba a
+  cualquier hostil que V tuviera detectado, aunque estuviera lejos o sin pelear, y nadie huía. Ahora
+  solo cuentan los enemigos en combate a menos de 40 m.
+- **Las muertes indirectas ahora cuentan para V.** Si V volaba un auto con un Némesis adentro (a
+  tiros hasta que explota o con el hackeo de autodestrucción) o lo derribaba después de agarrarlo
+  (letal o no), el mod decía "nadie sabe quién fue" y la banda no perdía fuerza. Esas muertes no
+  dejaban ningún golpe de V para leer, así que ahora el mod también mira a quién culpa el propio
+  juego por la muerte.
+- **Un Némesis que acaba de escapar ya no embosca enseguida.** Espera al menos 1 día de juego
+  después de escapar de V antes de su próxima emboscada, así tiene tiempo de crecer. Mientras
+  tanto pueden emboscar otros Némesis. Las partidas de versiones anteriores no cambian hasta el
+  próximo escape.
+
+## [1.3.3] - 2026-11-03
 
 ### English
 
@@ -35,14 +118,49 @@
 - **No notifications during cutscenes.** They wait until quest scenes (e.g. Johnny's memories),
   braindances and menus are over, then show one by one.
 
+#### Fixed
+- **Jackie removed from old saves.** 1.3.2 stopped Jackie from becoming a Nemesis, but a Jackie
+  Nemesis created before that stayed in the save. It is now removed when the game loads.
+
 ### Español
 
+#### Nuevo
+- **Integración con They Will Remember (opcional).** Cuando un escuadrón de venganza de TWR de una
+  banda con un Némesis vivo pelea con V, ese Némesis puede unirse y encabezarlo (misma probabilidad
+  que los refuerzos en gigs). El rencor de TWR (banda hostil, muertes recientes) sube la probabilidad
+  de emboscada, hasta x2.
+  - **Aviso de venganza:** cuando TWR elige una banda para vengarse, su Jefe o Teniente Némesis que
+    conoce a V le escribe antes (mensajes nuevos en el hilo "Número desconocido").
+  - **El dinero no compra a un Némesis:** si V paga a una banda el perdón de TWR, TWR olvida, pero su
+    Jefe o Teniente Némesis lo rechaza por mensaje. Sus emboscadas bajan a la mitad durante 3 días de
+    juego.
+- **Integración con Drug Dealer (opcional).** Las emboscadas, redadas y escaramuzas de Gang
+  Retaliation esperan mientras un trabajo de Drug Dealer tenga enemigos vivos. Un Némesis puede
+  aparecer con la banda que asalta tu negocio o defiende su territorio. Tu rango de dealer sube la
+  probabilidad de emboscada (hasta x1.48). Tus soldados de Drug Dealer nunca se vuelven Némesis, y un
+  enemigo que Drug Dealer borra mientras huye ya no cuenta como escapado.
+  - **Territorio:** en una zona que V disputa en Drug Dealer, sus bandas emboscan más (x1.25); en una
+    zona que V controla, la quieren recuperar (x1.5). El menú NÉMESIS lo muestra: "EN MANOS DE V" /
+    "DISPUTADO CON V" en cada barrio, una línea en el detalle del distrito y "Territorio perdido ante
+    V: ..." en cada banda.
+  - **Terror:** el terror de Drug Dealer hace que los pandilleros huyan antes (hasta +15% en la vida
+    para huir; la marca de huida en la barra de vida se mueve con él).
+- Las dos funcionan solo si el otro mod está instalado; sin él no cambia nada.
+
 #### Cambiado
+- **Némesis más duros.** Tenían la misma vida que un pandillero normal. Ahora la vida depende del
+  rango: Soldado x1.5, Teniente x2.5, Jefe x4 (la escolta no cambia). Nueva categoría en Mod Settings,
+  "Dureza de los Némesis", para ajustar cada rango, y una opción "Nivel según V" (apagada por defecto:
+  nivel del distrito, como antes) con niveles extra por rango.
 - **Avisos de Némesis más discretos.** Las novedades (escapes, rumores, ascensos, muertes...) ahora
   van al registro lateral, como los objetos saqueados, sin sonido ni vibración de pantalla. El aviso
   grande en el centro sigue disponible: Mod Settings > General > "Avisos en el centro de la pantalla".
 - **Sin avisos durante las escenas.** Esperan a que terminen las escenas de misión (p. ej. los
   recuerdos de Johnny), las danzas cerebrales y los menús, y después salen de a uno.
+
+#### Arreglado
+- **Jackie se borra de partidas viejas.** La 1.3.2 impidió que Jackie se volviera Némesis, pero un
+  Jackie Némesis creado antes seguía en la partida. Ahora se borra al cargar el juego.
 
 ## [1.3.2] - 2026-11-02
 
