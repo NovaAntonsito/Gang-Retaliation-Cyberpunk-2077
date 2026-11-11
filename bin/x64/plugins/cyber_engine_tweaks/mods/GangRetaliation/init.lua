@@ -71,6 +71,10 @@ local function flushMessages(delta)
     if GR.messageTimer > 0 or #GR.messages == 0 then return end
     local det = getDetection()
     if not det then return end
+    if not det:CanNotify() then
+        GR.messageTimer = 1.0
+        return
+    end
     det:Notify(table.remove(GR.messages, 1))
     GR.messageTimer = 3.5
 end
@@ -125,6 +129,7 @@ local function updateNemesis(evt)
     n.pos = { x = evt.posX, y = evt.posY, z = evt.posZ }
 
     n.escapes = (n.escapes or 0) + 1
+    n.escapedDay = gameDay()
     Hierarchy.addRenown(n, 2)
     Traits.ensure(n)
     Traits.grow(n)
@@ -168,6 +173,7 @@ local function createNemesis(evt)
         health = evt.health,
         pos = { x = evt.posX, y = evt.posY, z = evt.posZ },
         created = os.time(),
+        escapedDay = gameDay(),
         traits = {},
     })
     Traits.ensure(nemesis)
@@ -289,7 +295,9 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
     if not force then
         local waited = os.time() - (campaign.lastAmbush or 0)
         if waited < settings.ambushCooldownMinutes * 60 then return "cooldown" end
-        if math.random(100) > settings.ambushChancePercent then return "roll failed" end
+        -- Rencor de They Will Remember y rango de Drug Dealer: x1.0 a x2.0.
+        local heat = spawner:GetHeatFactor()
+        if math.random(100) > settings.ambushChancePercent * heat then return "roll failed" end
         local safe, distance = Ambush.nearHome(campaign)
         if safe then return string.format("near home (%.0f m)", distance) end
     end
@@ -300,8 +308,13 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
     local warSys = getSystem("GangRetaliation.GRWar")
     local districtGangs = (warSys and War.districtGangs(campaign, warSys:GetCurrentDistrict()))
         or Ambush.parseGangs(spawner:GetDistrictGangs())
-    local n = Ambush.pick(campaign.nemeses, districtGangs, not force)
-    if not n then return "no living Nemesis" end
+    -- Los que acaban de escapar esperan (Ambush.escapeRestDays); una emboscada forzada no espera.
+    local today = gameDay()
+    local n, resting = Ambush.pick(campaign.nemeses, districtGangs, not force, not force and today or nil)
+    for _, r in ipairs(resting) do
+        debugLog(string.format("Emboscada: %s descartado, escapo hace %.2f dias (espera %s)", labelOf(r), today - r.escapedDay, tostring(Ambush.escapeRestDays)))
+    end
+    if not n then return #resting > 0 and "all resting after escape" or "no living Nemesis" end
 
     Store.ensureCampaign(GR.campaignId).lastAmbush = os.time()
     Store.dirty = true
@@ -313,7 +326,7 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
     end
     local now = spawner:GetTime()
 
-    GR.pendingAmbush = { id = n.id, due = now + delay, giveUp = now + delay + 600, vehicle = forceVehicle }
+    GR.pendingAmbush = { id = n.id, due = now + delay, giveUp = now + delay + 1800, vehicle = forceVehicle }
     return "sms #" .. n.id .. ", ambush in " .. delay .. " s"
 end
 
@@ -420,6 +433,48 @@ local function tryGig(force)
     return force and "no Nemesis for this fight" or nil
 end
 
+-- Integraciones: un escuadron de venganza de They Will Remember o una mision de Drug Dealer contra una
+-- banda con Nemesis vivo. Se tira una vez por escuadron (misma probabilidad que los gigs), cuando V ya
+-- pelea; si el escuadron desaparece, se olvida y el proximo vuelve a tirar.
+local function tryExternalSquad()
+    local settings = getSettings()
+    local spawner = getSpawner()
+    if not settings or not spawner or not settings.enabled or not settings.gigEnabled then return nil end
+
+    local squad = spawner:GetExternalSquad()
+    if squad == "" then
+        GR.externalRolled = {}
+        return nil
+    end
+    GR.externalRolled = GR.externalRolled or {}
+    if GR.externalRolled[squad] then return nil end
+    if spawner:GetReinforcementBlocker() ~= "" then return nil end
+    GR.externalRolled[squad] = true
+
+    local source, gang = string.match(squad, "^(%a+)|(.+)$")
+    local n = gang and Ambush.pickFromGang(Store.campaign(GR.campaignId).nemeses, gang)
+    local roll = math.random(100)
+    if not n or roll > settings.gigChancePercent then
+        return string.format("%s: %s", squad, n and ("tirada " .. roll .. " fallida") or "sin Nemesis vivo")
+    end
+
+    local line = text(Ambush.gigLineKey(n), "...")
+    local escorts = Ambush.escorts(n, math.min(1, settings.ambushMaxEscorts))
+    pushTraits(n)
+    if not spawner:StartReinforcement(n.id, n.recordID, n.appearance or "", escorts, line, fullName(n)) then
+        return squad .. ": spawn failed"
+    end
+    n.gigs = (n.gigs or 0) + 1
+    GR.encounterId = n.id
+    Store.dirty = true
+    if source == "TWR" then
+        notify(string.format(text("GR-MsgSquadTWR", "%s is leading the vengeance squad!"), labelOf(n)))
+    else
+        notify(string.format(text("GR-MsgSquadDD", "%s came with the crew hitting your business!"), labelOf(n)))
+    end
+    return squad .. ": Nemesis #" .. n.id
+end
+
 local function processAppearances()
     local spawner = getSpawner()
     if not spawner or spawner:GetAppearanceReportCount() == 0 then return end
@@ -437,6 +492,9 @@ end
 local function checkEncounter()
     local spawner = getSpawner()
     if not GR.encounterId or not spawner or spawner:IsAmbushActive() then return end
+    -- Al terminar la emboscada todavia puede estar yendose (sobrante): V aun puede matarlo.
+    -- Sobrevive recien cuando se borra fuera de la vista. processDeaths corre antes que esto.
+    if spawner:IsNemesisSpawned(GR.encounterId) then return end
     local n = findNemesis(GR.encounterId)
     GR.encounterId = nil
     if n and n.status ~= "dead" then
@@ -458,7 +516,7 @@ local function hierarchyEvent(kind, a, b)
         notify(string.format(text("GR-MsgReturned", "%s is back from the dead, rebuilt with chrome. They are coming for you."), nameA .. " (" .. gang .. ")"))
         local phone = getSystem("GangRetaliation.GRPhone")
         if phone then
-            phone:SendSms(nameA, text("GR-SmsReturn-" .. math.random(3), "..."))
+            phone:SendReturn(nameA, text("GR-SmsReturn-" .. math.random(3), "..."))
         end
     elseif kind == "recruited" then
         notify(string.format(text("GR-MsgRecruited", "New face in the %s: %s, %s."), gang, nameA, rankA))
@@ -922,13 +980,35 @@ registerForEvent("onShutdown", function()
     if Store.dirty then Store.save() end
 end)
 
+-- Dev: medidor por seccion. os.clock tiene ~1 ms de resolucion en Windows: sirve para promedios de
+-- muchas llamadas y para ver picos, no para una llamada sola. Las llamadas a redscript cuentan dentro.
+GR.prof = { cur = {}, last = {}, window = 0, counts = "", state = "" }
+local function profAdd(sections, name, ms)
+    local s = sections[name]
+    if not s then
+        s = { calls = 0, total = 0, max = 0 }
+        sections[name] = s
+    end
+    s.calls, s.total, s.max = s.calls + 1, s.total + ms, math.max(s.max, ms)
+end
+
+local function prof(name, fn, ...)
+    if not GR.dev then return fn(...) end
+    local t0 = os.clock()
+    local a, b = fn(...)
+    local ms = (os.clock() - t0) * 1000
+    profAdd(GR.prof.cur, name, ms)
+    if GR.bench and GR.bench.measuring then profAdd(GR.bench.sections, name, ms) end
+    return a, b
+end
+
 local function update(delta)
     -- Cada llamada a redscript cuesta: todo el sondeo va en un tick de 1 s, no en cada frame.
     GR.fleeTimer = (GR.fleeTimer or 0) + delta
     local tick = GR.fleeTimer >= 1
     if tick then
         GR.fleeTimer = 0
-        refreshCampaign()
+        prof("refreshCampaign", refreshCampaign)
     end
     if GR.campaignId == 0 then return end
     if (GR.warmup or 0) > 0 then
@@ -937,37 +1017,37 @@ local function update(delta)
     end
     if GR.hierarchyNow then
         GR.hierarchyNow = false
-        local ok, err = pcall(updateHierarchy)
+        local ok, err = prof("updateHierarchy", pcall, updateHierarchy)
         if not ok then print("[GangRetaliation] Error en jerarquia: " .. tostring(err)) end
     end
 
     if tick then
-        processPending()
-        processDeaths()
-        checkEncounter()
-        checkRaid()
-        processAppearances()
-        processReveals()
+        prof("processPending", processPending)
+        prof("processDeaths", processDeaths)
+        prof("checkEncounter", checkEncounter)
+        prof("checkRaid", checkRaid)
+        prof("processAppearances", processAppearances)
+        prof("processReveals", processReveals)
 
         local det = getDetection()
-        if det then det:UpdateFleeing() end
+        if det then prof("Detection:UpdateFleeing", function() det:UpdateFleeing() end) end
         local speech = getSystem("GangRetaliation.GRSpeech")
-        if speech then speech:Tick() end
+        if speech then prof("Speech:Tick", function() speech:Tick() end) end
         local spawner = getSpawner()
-        if spawner then spawner:Tick() end
+        if spawner then prof("Spawner:Tick", function() spawner:Tick() end) end
         local warSys = getSystem("GangRetaliation.GRWar")
-        if warSys then warSys:Tick() end
+        if warSys then prof("War:Tick", function() warSys:Tick() end) end
         if Store.version ~= GR.strongholdVersion or GR.campaignId ~= GR.strongholdCampaign then
             GR.strongholdVersion = Store.version
             GR.strongholdCampaign = GR.campaignId
-            local okS, errS = pcall(pushStronghold)
+            local okS, errS = prof("pushStronghold", pcall, pushStronghold)
             if not okS then print("[GangRetaliation] Error en guarida: " .. tostring(errS)) end
         end
         local stronghold = getSystem("GangRetaliation.GRStronghold")
-        if stronghold then stronghold:Tick() end
-        pcall(strongholdEvents)
-        pcall(updatePendingAmbush)
-        pcall(updateHomes)
+        if stronghold then prof("Stronghold:Tick", function() stronghold:Tick() end) end
+        prof("strongholdEvents", pcall, strongholdEvents)
+        prof("updatePendingAmbush", pcall, updatePendingAmbush)
+        prof("updateHomes", pcall, updateHomes)
         -- El menu solo se reconstruye si cambiaron los datos (o la campana). Cada 30 s igual,
         -- por los textos que dependen del dia de juego o del idioma.
         GR.menuTimer = (GR.menuTimer or 0) + 1
@@ -975,24 +1055,26 @@ local function update(delta)
             GR.menuTimer = 0
             GR.menuVersion = Store.version
             GR.menuCampaign = GR.campaignId
-            local okM, errM = pcall(pushMenu)
+            local okM, errM = prof("pushMenu", pcall, pushMenu)
             if not okM then print("[GangRetaliation] Error en datos del menu: " .. tostring(errM)) end
         end
-        local ok, result = pcall(tryGig, false)
+        local ok, result = prof("tryGig", pcall, tryGig, false)
         if result then debugLog("Gig: " .. tostring(result)) end
+        local okE, resultE = prof("tryExternalSquad", pcall, tryExternalSquad)
+        if resultE then debugLog("Escuadron externo: " .. tostring(resultE)) end
     end
 
     GR.ambushTimer = (GR.ambushTimer or 0) + delta
     -- Solo en el frame del tick, justo despues de refreshCampaign (por si cambio la partida).
     if tick and GR.ambushTimer >= 60 then
         GR.ambushTimer = 0
-        local ok, result = pcall(tryAmbush, false)
+        local ok, result = prof("tryAmbush", pcall, tryAmbush, false)
         debugLog("Emboscada: " .. tostring(result))
-        local okH, errH = pcall(updateHierarchy)
+        local okH, errH = prof("updateHierarchy", pcall, updateHierarchy)
         if not okH then print("[GangRetaliation] Error en jerarquia: " .. tostring(errH)) end
-        local okS, resultS = pcall(trySkirmish, false)
+        local okS, resultS = prof("trySkirmish", pcall, trySkirmish, false)
         debugLog("Escaramuza: " .. tostring(resultS))
-        local okR, resultR = pcall(tryRaid, false)
+        local okR, resultR = prof("tryRaid", pcall, tryRaid, false)
         debugLog("Redada: " .. tostring(resultR))
     end
 
@@ -1002,7 +1084,7 @@ local function update(delta)
         GR.saveTimer = GR.saveTimer + delta
         if GR.saveTimer >= 5 then
             GR.saveTimer = 0
-            Store.save()
+            prof("Store.save (JSON)", Store.save)
         end
     end
 end
@@ -1077,6 +1159,115 @@ if GR.dev then
     registerHotkey("gr_fly_toggle", "Fly: on/off", function() pcall(toggleFly) end)
 end
 
+-- Dev: FPS del juego (con el delta de cada frame) y benchmark que apaga partes del mod para comparar.
+GR.fps = { frames = 0, time = 0, worst = 0, value = 0, worstMs = 0 }
+local BENCH_PHASES = {
+    { name = "all on" },
+    { name = "Lua off", luaOff = true },
+    { name = "redscript hooks off", hooksOff = true },
+    { name = "all off", luaOff = true, hooksOff = true },
+    { name = "all on (again)" },
+}
+local BENCH_SETTLE, BENCH_MEASURE = 3, 10
+
+local function profiler()
+    return getSystem("GangRetaliation.GRProfiler")
+end
+
+local function sortedSections(sections, seconds)
+    local list = {}
+    for name, s in pairs(sections) do
+        table.insert(list, { name = name, calls = s.calls, totalMs = s.total, maxMs = s.max, msPerSecond = s.total / seconds })
+    end
+    table.sort(list, function(a, b) return a.totalMs > b.totalMs end)
+    return list
+end
+
+local function percentile(values, p)
+    if #values == 0 then return 0 end
+    table.sort(values)
+    return values[math.max(1, math.ceil(#values * p))]
+end
+
+local function benchFinish(aborted)
+    local b = GR.bench
+    GR.bench = nil
+    local pr = profiler()
+    if pr then pr:SetHooksOff(false) end
+    if aborted then
+        GR.benchStatus = "Benchmark cancelled"
+        return
+    end
+    local run = { date = os.date("%Y-%m-%d %H:%M:%S"), campaign = GR.campaignId, nemeses = #Store.campaign(GR.campaignId).nemeses, phases = b.results }
+    print("[GangRetaliation] PERF ===== benchmark " .. run.date .. " (" .. run.nemeses .. " nemeses) =====")
+    for _, r in ipairs(b.results) do
+        print(string.format("[GangRetaliation] PERF %-22s %6.1f fps  avg %.2f ms  p99 %.2f ms  worst %.2f ms  lua %.3f ms/s", r.name, r.fps, r.avgFrameMs, r.p99FrameMs, r.worstFrameMs, r.luaMsPerSecond))
+    end
+    local path = "data/perf_results.json"
+    local runs = {}
+    local f = io.open(path, "r")
+    if f then
+        local ok, decoded = pcall(json.decode, f:read("*a"))
+        f:close()
+        if ok and type(decoded) == "table" then runs = decoded end
+    end
+    table.insert(runs, run)
+    f = io.open(path, "w")
+    if f then
+        f:write(json.encode(runs))
+        f:close()
+    end
+    GR.benchLast = b.results
+    GR.benchStatus = "Benchmark done (" .. run.date .. "), saved to data/perf_results.json"
+end
+
+local function benchStep(delta)
+    local b = GR.bench
+    -- Con la ventana de CET abierta los FPS no valen: se espera a que se cierre y la fase arranca de nuevo.
+    if GR.overlayOpen then
+        b.t, b.measuring = 0, false
+        GR.benchStatus = "Benchmark: close the CET overlay to start. Stand still, do not move the camera."
+        return
+    end
+    local phase = BENCH_PHASES[b.phase]
+    if b.t == 0 then
+        local pr = profiler()
+        if pr then pr:SetHooksOff(phase.hooksOff == true) end
+    end
+    b.t = b.t + delta
+    if not b.measuring and b.t >= BENCH_SETTLE then
+        b.measuring, b.frames, b.time, b.deltas, b.sections = true, 0, 0, {}, {}
+        local pr = profiler()
+        if pr then pr:TakeCounts() end
+    end
+    if b.measuring then
+        b.frames, b.time = b.frames + 1, b.time + delta
+        table.insert(b.deltas, delta * 1000)
+    end
+    GR.benchStatus = string.format("Benchmark: phase %d/%d (%s) %.0f s", b.phase, #BENCH_PHASES, phase.name, b.t)
+    if b.t >= BENCH_SETTLE + BENCH_MEASURE then
+        local pr = profiler()
+        local sections = sortedSections(b.sections, b.time)
+        local luaMs = 0
+        for _, s in ipairs(sections) do luaMs = luaMs + s.msPerSecond end
+        local worst = 0
+        for _, d in ipairs(b.deltas) do worst = math.max(worst, d) end
+        table.insert(b.results, {
+            name = phase.name,
+            fps = b.frames / b.time,
+            avgFrameMs = b.time * 1000 / b.frames,
+            p99FrameMs = percentile(b.deltas, 0.99),
+            worstFrameMs = worst,
+            luaMsPerSecond = luaMs,
+            luaSections = sections,
+            hookCalls = pr and pr:TakeCounts() or "",
+            state = pr and pr:GetState() or "",
+        })
+        b.phase, b.t, b.measuring = b.phase + 1, 0, false
+        if b.phase > #BENCH_PHASES then benchFinish(false) end
+    end
+end
+
 registerForEvent("onUpdate", function(delta)
     if GR.dev then
         local okF, errF = pcall(updateFly, delta)
@@ -1086,13 +1277,42 @@ registerForEvent("onUpdate", function(delta)
         end
     end
     if not GR.dev then return update(delta) end
-    local start = os.clock()
-    update(delta)
-    local p, ms = GR.perf, (os.clock() - start) * 1000
-    p.sum, p.frames, p.peak, p.time = p.sum + ms, p.frames + 1, math.max(p.peak, ms), p.time + delta
-    if p.time >= 1 then
-        p.avgMs, p.peakMs = p.sum / p.frames, p.peak
-        p.sum, p.frames, p.peak, p.time = 0, 0, 0, 0
+
+    local fps = GR.fps
+    fps.frames, fps.time, fps.worst = fps.frames + 1, fps.time + delta, math.max(fps.worst, delta)
+    if fps.time >= 1 then
+        fps.value, fps.worstMs = fps.frames / fps.time, fps.worst * 1000
+        fps.frames, fps.time, fps.worst = 0, 0, 0
+    end
+
+    local skipLua = false
+    if GR.bench then
+        benchStep(delta)
+        local b = GR.bench
+        skipLua = b ~= nil and BENCH_PHASES[b.phase].luaOff == true and not GR.overlayOpen
+    end
+
+    if not skipLua then
+        local start = os.clock()
+        update(delta)
+        local p, ms = GR.perf, (os.clock() - start) * 1000
+        p.sum, p.frames, p.peak, p.time = p.sum + ms, p.frames + 1, math.max(p.peak, ms), p.time + delta
+        if p.time >= 1 then
+            p.avgMs, p.peakMs = p.sum / p.frames, p.peak
+            p.sum, p.frames, p.peak, p.time = 0, 0, 0, 0
+        end
+    end
+
+    -- Ventana de 10 s para el panel (el benchmark usa sus propios contadores).
+    local pf = GR.prof
+    pf.window = pf.window + delta
+    if pf.window >= 10 then
+        pf.last = sortedSections(pf.cur, pf.window)
+        pf.cur, pf.window = {}, 0
+        local pr = profiler()
+        if pr and not GR.bench then
+            pf.counts, pf.state = pr:TakeCounts(), pr:GetState()
+        end
     end
 end)
 
@@ -1133,6 +1353,26 @@ registerForEvent("onDraw", function()
             ImGui.Text(text("GR-UiCampaign", "Campaign") .. ": " .. tostring(GR.campaignId))
             ImGui.Text(text("GR-UiNemeses", "Nemeses") .. ": " .. tostring(#campaign.nemeses))
             ImGui.TextDisabled(string.format("onUpdate: %.3f ms/frame avg, %.3f ms peak (last second)", GR.perf.avgMs, GR.perf.peakMs))
+            ImGui.TextDisabled(string.format("FPS %.0f, worst frame %.1f ms (overlay open lowers it)", GR.fps.value, GR.fps.worstMs))
+            if ImGui.CollapsingHeader("Performance") then
+                if GR.bench then
+                    if ImGui.Button("Cancel benchmark") then benchFinish(true) end
+                elseif ImGui.Button("Run benchmark (~65 s)") then
+                    GR.bench = { phase = 1, t = 0, measuring = false, results = {} }
+                end
+                ImGui.TextWrapped(GR.benchStatus or "Stand still in a busy street, close the overlay and do not touch the mouse.")
+                for _, r in ipairs(GR.benchLast or {}) do
+                    ImGui.Text(string.format("%-22s %5.1f fps  p99 %5.1f ms  worst %5.1f ms  lua %.2f ms/s", r.name, r.fps, r.p99FrameMs, r.worstFrameMs, r.luaMsPerSecond))
+                end
+                ImGui.Separator()
+                ImGui.TextDisabled("Lua sections, last 10 s (ms/s, max ms, calls):")
+                for i, s in ipairs(GR.prof.last) do
+                    if i > 10 then break end
+                    ImGui.TextDisabled(string.format("  %-26s %7.3f  %6.1f  %d", s.name, s.msPerSecond, s.maxMs, s.calls))
+                end
+                ImGui.TextDisabled("Hooks, last 10 s: " .. GR.prof.counts)
+                ImGui.TextWrapped("Alive: " .. GR.prof.state)
+            end
 
             local det = getDetection()
             if det then
@@ -1144,6 +1384,7 @@ registerForEvent("onDraw", function()
                 local homeFactor, homeDistance = Ambush.homeFactor(Game.GetPlayer():GetWorldPosition(), Store.campaign(GR.campaignId))
                 ImGui.TextDisabled(string.format("home: %.0f m  (ambush chance x%.2f)", homeDistance, homeFactor))
                 drawHomes()
+                ImGui.TextDisabled(sp:GetTrackedObjectiveInfo())
                 if GR.pendingAmbush then
                     ImGui.TextDisabled(string.format("SMS #%d: ambush in %.0f s", GR.pendingAmbush.id, GR.pendingAmbush.due - sp:GetTime()))
                 end
@@ -1222,8 +1463,11 @@ registerForEvent("onDraw", function()
             if det4 then
                 local mode = det4:GetFleeMode()
                 ImGui.Text("Flee mode:")
-                for _, opt in ipairs({ { 0, "A: run" }, { 1, "B: fear" }, { 2, "C: both" } }) do
-                    ImGui.SameLine()
+                -- D-G: experimentos con sistemas del juego (ver ApplyFleeMode en Detection.reds).
+                local modes = { { 0, "A: run" }, { 1, "B: fear" }, { 2, "C: both" }, { 3, "D: wipe+run" },
+                    { 4, "E: wipe+fear+run" }, { 5, "F: retreat" }, { 6, "G: terror+run" }, { 7, "H: native flee" } }
+                for i, opt in ipairs(modes) do
+                    if i ~= 5 then ImGui.SameLine() end
                     if ImGui.RadioButton(opt[2], mode == opt[1]) then det4:SetFleeMode(opt[1]) end
                 end
             end
@@ -1242,6 +1486,14 @@ registerForEvent("onDraw", function()
                 local ok, result = pcall(tryAmbush, true, 0, true)
                 GR.lastAction = tostring(result)
                 print("[GangRetaliation] Debug: " .. GR.lastAction)
+            end
+            local hud = getSystem("GangRetaliation.GRHud")
+            if hud then
+                if ImGui.Button(hud:IsGodMode() and "Debug: god mode ON (click = off)" or "Debug: god mode OFF (click = on)") then
+                    GR.lastAction = hud:ToggleGodMode() and "God mode ON" or "God mode OFF"
+                end
+                ImGui.TextDisabled(hud:GetGodModeInfo())
+                ImGui.TextDisabled(hud:GetDebugInfo())
             end
             if ImGui.Button("Debug: gig reinforcement now") then
                 local ok, result = pcall(tryGig, true)
@@ -1377,6 +1629,24 @@ registerForEvent("onDraw", function()
             if ImGui.Button(GR.fly.on and "Fly: ON (click to land)" or "Fly (noclip)") then pcall(toggleFly) end
             ImGui.SameLine()
             ImGui.TextDisabled("keys: CET > Bindings > Gang Retaliation (Fly: ...)")
+            ImGui.Separator()
+            -- Drug Dealer (la logica esta en GRSpawner.DebugDD / GRIntegrations)
+            local ddSpawner = getSpawner()
+            if ddSpawner then
+                if not GR.ddInfoAt or os.clock() - GR.ddInfoAt > 1 then
+                    GR.ddInfo = ddSpawner:GetDDDebugInfo()
+                    GR.ddInfoAt = os.clock()
+                end
+                ImGui.Text(GR.ddInfo)
+                local ddButtons = { "DD: capture random zone", "DD: contest this zone", "DD: terror +25", "DD: surrender all zones" }
+                for i, label in ipairs(ddButtons) do
+                    if i > 1 then ImGui.SameLine() end
+                    if ImGui.Button(label) then GR.lastAction = ddSpawner:DebugDD(i - 1) end
+                end
+                if ImGui.Button("TWR: fake vengeance SMS") then GR.lastAction = ddSpawner:DebugTWR(0) end
+                ImGui.SameLine()
+                if ImGui.Button("TWR: fake payment refused") then GR.lastAction = ddSpawner:DebugTWR(1) end
+            end
             if ImGui.Button("Save now") then Store.save() end
             ImGui.SameLine()
             if ImGui.Button("Clear campaign") then Store.clearCampaign(GR.campaignId) end

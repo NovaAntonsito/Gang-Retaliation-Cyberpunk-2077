@@ -1,5 +1,7 @@
 module GangRetaliation
 
+import Codeware.Localization.*
+
 public class GRSpawner extends ScriptableSystem {
     private let m_entityIDs: array<EntityID>;
 
@@ -40,6 +42,17 @@ public class GRSpawner extends ScriptableSystem {
     private let m_ambushStart: Float;
     private let m_ambushSawCombat: Bool;
     private let m_ambushCalmSince: Float;
+
+    // Reintentos de hostilidad (Nemesis que aparecen pasivos) y barra de jefe a vigilar.
+    private let m_provokeAmbush: Float;
+    private let m_provokeAt: Float;
+    private let m_provokeCount: Int32;
+    private let m_bossBar: wref<BossHealthBarGameController>;
+
+    private let m_objectivePins: Int32;
+    private let m_objectiveSource: String;
+    private let m_objectiveDistance: Float;
+    private let m_objectiveCheckedAt: Float;
     private let m_stuckChecked: Bool;
 
     private let m_spawnPositions: array<Vector4>;
@@ -52,6 +65,17 @@ public class GRSpawner extends ScriptableSystem {
     private let m_spotFound: Bool;
     // Por que fallo la ultima busqueda de sitio (para el log): alcanzable, cielo abierto, despejado, a la vista.
     private let m_spotFails: array<Int32>;
+    // Busqueda junto al trafico (log): autos cargados, fuera de rango, sin camino, sin hueco, a la vista.
+    private let m_trafficFails: array<Int32>;
+
+    // Lo que queda de una emboscada, redada o escaramuza ya terminada. Antes se borraba todo de golpe
+    // delante de V (vivos, cadaveres y auto). Ahora los vivos se van y cada uno se borra cuando V no lo ve.
+    private let m_leftIDs: array<EntityID>;
+    private let m_leftNemesis: array<Int32>;
+    private let m_leftSince: array<Float>;
+    private let m_leftSent: array<Bool>;
+    // Nombre completo del Nemesis (escaner y barra de jefe) mientras se va.
+    private let m_leftNames: array<String>;
 
     public static func Get(gi: GameInstance) -> ref<GRSpawner> {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRSpawner") as GRSpawner;
@@ -90,16 +114,29 @@ public class GRSpawner extends ScriptableSystem {
 
     public func GetNemesisId(id: EntityID) -> Int32 {
         let index: Int32 = this.IndexOf(id);
-        return index >= 0 ? this.m_nemesisIDs[index] : 0;
+        if index >= 0 {
+            return this.m_nemesisIDs[index];
+        }
+        // Un Nemesis que se esta yendo sigue teniendo sus rasgos y su causa de muerte.
+        let left: Int32 = this.LeftoverIndex(id);
+        return left >= 0 ? this.m_leftNemesis[left] : 0;
     }
 
+    // Incluye a los sobrantes: uno que se esta yendo sigue en el mundo y no puede aparecer otra copia.
     public func IsNemesisSpawned(nemesisId: Int32) -> Bool {
-        for id in this.m_nemesisIDs {
-            if id == nemesisId {
-                return true;
-            }
+        if nemesisId <= 0 {
+            return false;
         }
-        return false;
+        return ArrayContains(this.m_nemesisIDs, nemesisId) || ArrayContains(this.m_leftNemesis, nemesisId);
+    }
+
+    // Hay algo del mod en el mundo (emboscada activa o sobrantes). Lo usa GRTraits para registrar golpes.
+    public func HasOwnSpawns() -> Bool {
+        return ArraySize(this.m_entityIDs) > 0 || ArraySize(this.m_leftIDs) > 0;
+    }
+
+    public func GRProfState() -> String {
+        return "spawned=" + IntToString(ArraySize(this.m_entityIDs)) + " leftovers=" + IntToString(ArraySize(this.m_leftIDs));
     }
 
     private func GetDirection(player: ref<PlayerPuppet>, angle: Float) -> Vector4 {
@@ -159,11 +196,27 @@ public class GRSpawner extends ScriptableSystem {
         return Vector4.Distance(last, to) < 3.0 && path.CalculateLength() < Vector4.Distance(from, to) * 2.0 + 10.0;
     }
 
-    // V ve el punto: ninguna pared entre sus ojos y el pecho del NPC.
-    private func HasLineOfSight(player: ref<PlayerPuppet>, pos: Vector4) -> Bool {
+    // V ve el punto: ninguna pared entre sus ojos y el pecho del NPC. Unica copia: la usan la huida
+    // (GRDetection.PlayerSees), los sobrantes y la busqueda de sitio.
+    public func HasLineOfSight(player: ref<PlayerPuppet>, pos: Vector4) -> Bool {
         let result: TraceResult;
         let eyes: Vector4 = player.GetWorldPosition() + new Vector4(0.0, 0.0, 1.7, 0.0);
         return !GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(eyes, pos + new Vector4(0.0, 0.0, 1.5, 0.0), n"Static", result, true, false);
+    }
+
+    // Oculto para V (regla de They Will Remember): fuera del cono de 70 grados delante de V y sin linea
+    // de vista ni al pecho ni a la cabeza. Con solo la pared, V lo veia al girar o por un hueco.
+    private func IsHiddenFromPlayer(player: ref<PlayerPuppet>, pos: Vector4) -> Bool {
+        let toPos: Vector4 = pos - player.GetWorldPosition();
+        toPos.Z = 0.0;
+        if Vector4.GetAngleBetween(player.GetWorldForward(), toPos) < 70.0 {
+            return false;
+        }
+        let result: TraceResult;
+        let eyes: Vector4 = player.GetWorldPosition() + new Vector4(0.0, 0.0, 1.7, 0.0);
+        let head: Vector4 = pos + new Vector4(0.0, 0.0, 1.8, 0.0);
+        return !this.HasLineOfSight(player, pos)
+            && GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(eyes, head, n"Static", result, true, false);
     }
 
     private func FindReachableSpot(player: ref<PlayerPuppet>, angle: Float, distance: Float) -> Vector4 {
@@ -190,7 +243,7 @@ public class GRSpawner extends ScriptableSystem {
                                 if !this.IsClearSpot(pos) {
                                     this.m_spotFails[2] += 1;
                                 } else {
-                                    if hidden && this.HasLineOfSight(player, pos) {
+                                    if hidden && !this.IsHiddenFromPlayer(player, pos) {
                                         this.m_spotFails[3] += 1;
                                     } else {
                                         this.m_spotFound = true;
@@ -205,6 +258,92 @@ public class GRSpawner extends ScriptableSystem {
         }
         this.m_spotFound = false;
         return player.GetWorldPosition();
+    }
+
+    // Emboscada en auto al estilo de They Will Remember: se genera pegado a un auto que ya esta en la calle
+    // (siempre en calzada y con la orientacion del carril), que apunte hacia V y con camino a pie hasta V.
+    // Distancias de TWR para V a pie: 90-120 m mas o menos delante, o 50-80 m al costado/detras.
+    private func FindTrafficSpot(player: ref<PlayerPuppet>, out spawnPos: Vector4, out spawnOri: Quaternion) -> Bool {
+        let traffic: ref<GRTraffic> = GRTraffic.Get(this.GetGameInstance());
+        if !IsDefined(traffic) {
+            return false;
+        }
+        let vehicles: array<ref<VehicleObject>> = traffic.GetVehicles();
+        let playerPos: Vector4 = player.GetWorldPosition();
+        let forward: Vector4 = player.GetWorldForward();
+        let checkedPaths: Int32 = 0;
+        let playerVehicleID: EntityID;
+        let playerVehicle: wref<GameObject> = GetMountedVehicle(player);
+        if IsDefined(playerVehicle) {
+            playerVehicleID = playerVehicle.GetEntityID();
+        }
+        this.m_trafficFails = [ArraySize(vehicles), 0, 0, 0, 0];
+        for vehicle in vehicles {
+            let pos: Vector4 = vehicle.GetWorldPosition();
+            let dist: Float = Vector4.Length(pos - playerPos);
+            let fovAngle: Float = Vector4.GetAngleBetween(forward, pos - playerPos);
+            let fovAngleEnemy: Float = Vector4.GetAngleBetween(vehicle.GetWorldForward(), Vector4.Normalize(playerPos - pos));
+            let inBand: Bool = (dist > 90.0 && dist < 120.0 && fovAngle < 70.0 && fovAngleEnemy < 60.0)
+                || (dist > 50.0 && dist < 80.0 && fovAngle > 70.0 && fovAngleEnemy < 60.0);
+            // Fuera: el auto de V, autos en otro nivel (puentes, AV) y los nuestros.
+            let own: Bool = vehicle.GetEntityID() == this.m_vehicleID || (EntityID.IsDefined(playerVehicleID) && vehicle.GetEntityID() == playerVehicleID);
+            if !inBand || own || AbsF(pos.Z - playerPos.Z) > 6.0 {
+                this.m_trafficFails[1] += 1;
+            } else {
+                // Cada camino cuesta: como mucho 8 por intento.
+                if checkedPaths >= 8 {
+                    return false;
+                }
+                checkedPaths += 1;
+                let path: ref<NavigationPath> = GameInstance.GetNavigationSystem(this.GetGameInstance()).CalculatePathOnlyHumanNavmesh(pos, playerPos, NavGenAgentSize.Human, 5.0);
+                let pathLength: Float = IsDefined(path) ? path.CalculateLength() : 0.0;
+                if pathLength <= 0.0 || pathLength > 2.0 * dist {
+                    this.m_trafficFails[2] += 1;
+                } else {
+                    if !this.HasSpaceForCar(vehicle, spawnPos) {
+                        this.m_trafficFails[3] += 1;
+                    } else {
+                        // Cerca y a la vista de V se veria aparecer de la nada.
+                        if dist < 80.0 && this.HasLineOfSight(player, spawnPos) {
+                            this.m_trafficFails[4] += 1;
+                        } else {
+                            spawnOri = vehicle.GetWorldOrientation();
+                            let ground: Vector4 = GameInstance.GetNavigationSystem(this.GetGameInstance()).GetNearestNavmeshPointBelowOnlyHumanNavmesh(spawnPos + new Vector4(0.0, 0.0, 1.0, 0.0), 0.5, 5);
+                            if !Vector4.IsZero(ground) && Vector4.Distance(ground, spawnPos) <= 10.0 {
+                                spawnPos = ground;
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Hueco de un auto (caja de 5 x 8 x 2 m) a 10 m delante o detras del auto del trafico, sin chocar
+    // con paredes ni con otros vehiculos.
+    private func HasSpaceForCar(vehicle: ref<VehicleObject>, out spawnPos: Vector4) -> Bool {
+        let spatial: ref<SpatialQueriesSystem> = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
+        let box: Vector4 = new Vector4(2.5, 4.0, 1.0, 0.0);
+        let forward: Vector4 = vehicle.GetWorldForward();
+        forward.Z = 0.0;
+        forward = Vector4.Normalize(forward);
+        let origin: Vector4 = vehicle.GetWorldPosition();
+        let angles: array<Float> = [0.0, Pi()];
+        for angle in angles {
+            let dir: Vector4 = Vector4.RotateAxis(forward, new Vector4(0.0, 0.0, 1.0, 0.0), angle);
+            let query: Vector4 = origin + dir * 10.0;
+            query.Z += box.Z + 0.2;
+            let rotation: EulerAngles = Quaternion.ToEulerAngles(Quaternion.BuildFromDirectionVector(dir));
+            let hitStatic: TraceResult;
+            let hitVehicle: TraceResult;
+            if !spatial.Overlap(box, query, rotation, n"Static", hitStatic) && !spatial.Overlap(box, query, rotation, n"Vehicle", hitVehicle) {
+                spawnPos = query;
+                return true;
+            }
+        }
+        return false;
     }
 
     // Escolta junto al lider (el grupo llega junto), ajustada al navmesh; si no hay sitio, en el del lider.
@@ -264,10 +403,11 @@ public class GRSpawner extends ScriptableSystem {
 
     public func GetNemesisName(id: EntityID) -> String {
         let index: Int32 = this.IndexOf(id);
-        if index < 0 || this.m_nemesisIDs[index] <= 0 {
-            return "";
+        if index >= 0 {
+            return this.m_nemesisIDs[index] > 0 ? this.m_speakers[index] : "";
         }
-        return this.m_speakers[index];
+        let left: Int32 = this.LeftoverIndex(id);
+        return left >= 0 && this.m_leftNemesis[left] > 0 ? this.m_leftNames[left] : "";
     }
 
     private func AddMappin(index: Int32, npc: ref<GameObject>) {
@@ -288,26 +428,70 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func MarkDead(id: EntityID) {
+        let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
         let index: Int32 = this.IndexOf(id);
-        if index < 0 {
+        if index >= 0 {
+            this.RemoveMappin(index);
+            if this.m_nemesisIDs[index] > 0 {
+                this.RecordDeath(this.m_nemesisIDs[index], npc);
+                this.m_nemesisIDs[index] = 0;
+            }
             return;
         }
-        this.RemoveMappin(index);
-        let nemesisId: Int32 = this.m_nemesisIDs[index];
-        if nemesisId > 0 {
-            let kind: String = this.DeathKind(nemesisId, GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet);
-            ArrayPush(this.m_deaths, nemesisId);
-            let cause: String = this.TakeLastHit(nemesisId);
-            if Equals(kind, "confirmed") && NotEquals(cause, "v") {
-                kind = "normal";
-            }
-            ArrayPush(this.m_deathKinds, kind);
-            ArrayPush(this.m_deathCauses, cause);
-            ArrayRemove(this.m_finisherIds, nemesisId);
-
-            this.m_nemesisIDs[index] = 0;
-            GRLog("Nemesis #" + IntToString(nemesisId) + " muerto (" + kind + ", " + cause + ")");
+        let left: Int32 = this.LeftoverIndex(id);
+        if left >= 0 && this.m_leftNemesis[left] > 0 {
+            this.RecordDeath(this.m_leftNemesis[left], npc);
+            this.m_leftNemesis[left] = 0;
         }
+    }
+
+    private func RecordDeath(nemesisId: Int32, npc: ref<ScriptedPuppet>) {
+        let kind: String = this.DeathKind(nemesisId, npc);
+        ArrayPush(this.m_deaths, nemesisId);
+        let cause: String = this.TakeLastHit(nemesisId);
+        if NotEquals(cause, "v") && this.KilledByPlayer(npc as NPCPuppet) {
+            GRLog("Nemesis #" + IntToString(nemesisId) + ": muerte indirecta (" + cause + "), atribuida a V");
+            cause = "v";
+        }
+        if Equals(kind, "confirmed") && NotEquals(cause, "v") {
+            kind = "normal";
+        }
+        ArrayPush(this.m_deathKinds, kind);
+        ArrayPush(this.m_deathCauses, cause);
+        ArrayRemove(this.m_finisherIds, nemesisId);
+        GRLog("Nemesis #" + IntToString(nemesisId) + " muerto (" + kind + ", " + cause + ")");
+    }
+
+    // V como responsable de una muerte o un derribo sin golpe suyo registrado. El juego mata a los pasajeros
+    // de un auto que explota con el estado ForceKill (no hay golpe) y los derribos por agarre no pasan por
+    // el sistema de dano. Se mira a quien anota el juego: GetMyKiller (instigador del evento de muerte o del
+    // derribo letal) y quien aplico el estado que lo mato o lo dejo inconsciente. Un vehiculo destruido
+    // cuenta para V si V lo dano. Siempre desde el hilo principal.
+    private func KilledByPlayer(npc: ref<NPCPuppet>) -> Bool {
+        if !IsDefined(npc) {
+            return false;
+        }
+        // Derribo por agarre: sigue montado en V (ranura "grapple") mientras dura la animacion.
+        if ScriptedPuppet.IsBeingGrappled(npc) {
+            return true;
+        }
+        let sources: array<wref<GameObject>>;
+        ArrayPush(sources, npc.GetMyKiller());
+        ArrayPush(sources, GetMountedVehicle(npc));
+        let effects: array<TweakDBID> = [t"BaseStatusEffect.ForceKill", t"BaseStatusEffect.Unconscious"];
+        for effectID in effects {
+            let effect: ref<StatusEffect> = StatusEffectHelper.GetStatusEffectByID(npc, effectID);
+            if IsDefined(effect) {
+                ArrayPush(sources, GameInstance.FindEntityByID(this.GetGameInstance(), effect.GetInstigatorEntityID()) as GameObject);
+            }
+        }
+        for source in sources {
+            let vehicle: ref<VehicleObject> = source as VehicleObject;
+            if IsDefined(source) && (source.IsPlayer() || (IsDefined(vehicle) && vehicle.IsDestroyed() && vehicle.GRHitByPlayer())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private func DeathKind(nemesisId: Int32, npc: ref<ScriptedPuppet>) -> String {
@@ -425,7 +609,41 @@ public class GRSpawner extends ScriptableSystem {
         if GRSpawner.IsTWRSquadActive() {
             return "They Will Remember squad";
         }
+        if GRIntegrations.IsDDJobActive(this.GetGameInstance()) {
+            return "Drug Dealer job";
+        }
         return "";
+    }
+
+    // Para CET (Integrations.reds): escuadron de TWR/DD cerca ("TWR|Banda") y multiplicador de emboscadas.
+    public func GetExternalSquad() -> String {
+        return GRIntegrations.GetExternalSquad(this.GetGameInstance());
+    }
+
+    public func GetHeatFactor() -> Float {
+        return GRIntegrations.GetHeatFactor(this.GetGameInstance(), this.GetDistrictGangs());
+    }
+
+    // Panel dev: debug de Drug Dealer. 0 capturar zona al azar, 1 disputar la actual, 2 +25 terror, 3 soltar zonas.
+    public func DebugDD(action: Int32) -> String {
+        switch action {
+            case 0: return GRIntegrations.DebugCaptureRandomTurf();
+            case 1: return GRIntegrations.DebugContestCurrentTurf();
+            case 2: return GRIntegrations.DebugAddTerror();
+            case 3: return GRIntegrations.DebugSurrenderAllTurfs();
+            default: return "";
+        }
+    }
+
+    // Panel dev: 0 = simular venganza de TWR, 1 = simular perdon pagado y rechazado.
+    public func DebugTWR(action: Int32) -> String {
+        let watch: ref<GRTWRWatch> = GRTWRWatch.Get(this.GetGameInstance());
+        return IsDefined(watch) ? watch.Debug(action) : "TWR watch not ready";
+    }
+
+    public func GetDDDebugInfo() -> String {
+        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
+        return GRIntegrations.GetDDDebugInfo(IsDefined(settings) ? settings.fleeHealthPercent : 35);
     }
 
     // They Will Remember manda sus propias venganzas (tag TheyWillRemember.Squad): no sumar otra encima.
@@ -434,8 +652,15 @@ public class GRSpawner extends ScriptableSystem {
         if !IsDefined(des) {
             return false;
         }
+        // Solo miembros vivos: TWR no borra los cadaveres mientras V este a menos de 80 m.
         let squad: array<ref<Entity>> = des.GetTagged(n"TheyWillRemember.Squad");
-        return ArraySize(squad) > 0;
+        for member in squad {
+            let npc: ref<ScriptedPuppet> = member as ScriptedPuppet;
+            if IsDefined(npc) && !GRDetection.IsNeutralized(npc) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Tier de escena 2-5: V camina sin armas (departamento, escenas de mision). En la calle es 1.
@@ -448,7 +673,73 @@ public class GRSpawner extends ScriptableSystem {
         return tier >= 2 && tier <= 5;
     }
 
-    // Mision de historia seguida (no gigs): ahi una huida puede dejar la mision sin terminar.
+    // Distancia horizontal de V al punto mas cercano del objetivo seguido (-1 = sin punto en el mapa).
+    // Igual que el mapa del juego (worldMap.swift): solo si la entrada seguida es un objetivo, y con su hash.
+    // GetQuestMappinPosition NO va aca: espera el hash de un mappin, no de un objetivo (sospecha del crash
+    // del 31/10). Se recalcula como mucho una vez por segundo (el panel CET lo pide en cada frame).
+    // m_objectivePins / m_objectiveSource quedan para el panel dev.
+    public func GetTrackedObjectiveDistance() -> Float {
+        let now: Float = this.Now();
+        if this.m_objectiveCheckedAt > 0.0 && now - this.m_objectiveCheckedAt < 1.0 {
+            return this.m_objectiveDistance;
+        }
+        this.m_objectiveCheckedAt = now;
+        this.m_objectiveDistance = -1.0;
+        this.m_objectivePins = 0;
+        this.m_objectiveSource = "none";
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        let journal: ref<JournalManager> = GameInstance.GetJournalManager(gi);
+        let mappins: ref<MappinSystem> = GameInstance.GetMappinSystem(gi);
+        if !IsDefined(player) || !IsDefined(journal) || !IsDefined(mappins) {
+            return -1.0;
+        }
+        let objective: ref<JournalQuestObjectiveBase> = journal.GetTrackedEntry() as JournalQuestObjectiveBase;
+        if !IsDefined(objective) {
+            this.m_objectiveSource = "not an objective";
+            return -1.0;
+        }
+        let positions: array<Vector3>;
+        mappins.GetQuestMappinPositionsByObjective(Cast<Uint32>(journal.GetEntryHash(objective)), positions);
+        this.m_objectivePins = ArraySize(positions);
+        if this.m_objectivePins == 0 {
+            return -1.0;
+        }
+        this.m_objectiveSource = "objective";
+        let playerPos: Vector4 = player.GetWorldPosition();
+        let nearest: Float = -1.0;
+        for pos in positions {
+            let dx: Float = pos.X - playerPos.X;
+            let dy: Float = pos.Y - playerPos.Y;
+            let d: Float = SqrtF(dx * dx + dy * dy);
+            if nearest < 0.0 || d < nearest {
+                nearest = d;
+            }
+        }
+        this.m_objectiveDistance = nearest;
+        return nearest;
+    }
+
+    // Texto para el panel dev: tipo de mision seguida, distancia y de donde salio el punto.
+    public func GetTrackedObjectiveInfo() -> String {
+        let quest: wref<JournalQuest> = this.GetTrackedQuest();
+        let questType: String = IsDefined(quest) ? EnumValueToString("gameJournalQuestType", Cast<Int64>(EnumInt(quest.GetType()))) : "-";
+        let distance: Float = this.GetTrackedObjectiveDistance();
+        let where: String = distance < 0.0 ? "no pin" : IntToString(Cast<Int32>(distance)) + " m";
+        return "objective: " + questType + ", " + where + " (" + IntToString(this.m_objectivePins) + " pins, " + this.m_objectiveSource + ")";
+    }
+
+    // Mision de historia seguida y V cerca de su objetivo: ahi una huida puede dejar la mision sin terminar.
+    // Lejos del objetivo, o sin punto en el mapa, no bloquea (casi todos siguen siempre alguna mision).
+    public func IsStoryQuestNearby() -> Bool {
+        if !this.IsStoryQuestTracked() {
+            return false;
+        }
+        let distance: Float = this.GetTrackedObjectiveDistance();
+        return distance >= 0.0 && distance < 150.0;
+    }
+
+    // Mision de historia seguida (no gigs).
     public func IsStoryQuestTracked() -> Bool {
         let quest: wref<JournalQuest> = this.GetTrackedQuest();
         if !IsDefined(quest) {
@@ -460,7 +751,7 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func IsOwnSpawn(id: EntityID) -> Bool {
-        return this.IndexOf(id) >= 0;
+        return this.IndexOf(id) >= 0 || this.LeftoverIndex(id) >= 0;
     }
 
     private func GetSpawnBlocker() -> String {
@@ -581,19 +872,30 @@ public class GRSpawner extends ScriptableSystem {
             return false;
         }
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
-        // Primero detras de V; si no hay sitio, cualquier lado salvo delante, y mas cerca.
-        let pos: Vector4 = this.FindSpot(player, RandRangeF(165.0, 195.0), 70.0, 120.0, 0.45, true);
-        if !this.m_spotFound {
-            GRLog("Vehiculo: sin sitio alrededor de V (descartes: no alcanzable=" + IntToString(this.m_spotFails[0])
-                + ", bajo techo=" + IntToString(this.m_spotFails[1]) + ", ocupado=" + IntToString(this.m_spotFails[2])
-                + ", a la vista=" + IntToString(this.m_spotFails[3]) + ")");
-            return false;
+        let pos: Vector4;
+        let orientation: Quaternion;
+        // Primero junto a un auto del trafico (en la calle, mirando como el carril).
+        if this.FindTrafficSpot(player, pos, orientation) {
+            GRLog("Vehiculo: junto a un auto del trafico a " + FloatToString(Vector4.Distance(pos, player.GetWorldPosition())) + " m");
+        } else {
+            GRLog("Vehiculo: sin auto del trafico util (cargados=" + IntToString(this.m_trafficFails[0])
+                + ", fuera de rango=" + IntToString(this.m_trafficFails[1]) + ", sin camino=" + IntToString(this.m_trafficFails[2])
+                + ", sin hueco=" + IntToString(this.m_trafficFails[3]) + ", a la vista=" + IntToString(this.m_trafficFails[4]) + ")");
+            // Si no: detras de V; si no hay sitio, cualquier lado salvo delante, y mas cerca.
+            pos = this.FindSpot(player, RandRangeF(165.0, 195.0), 70.0, 120.0, 0.45, true);
+            if !this.m_spotFound {
+                GRLog("Vehiculo: sin sitio alrededor de V (descartes: no alcanzable=" + IntToString(this.m_spotFails[0])
+                    + ", bajo techo=" + IntToString(this.m_spotFails[1]) + ", ocupado=" + IntToString(this.m_spotFails[2])
+                    + ", a la vista=" + IntToString(this.m_spotFails[3]) + ")");
+                return false;
+            }
+            orientation = this.GetFacingPlayer(player, pos);
         }
         let des: ref<DynamicEntitySystem> = GameInstance.GetDynamicEntitySystem();
         let spec: ref<DynamicEntitySpec> = new DynamicEntitySpec();
         spec.recordID = TDBID.Create(vehicleRecord);
         spec.position = pos;
-        spec.orientation = this.GetFacingPlayer(player, pos);
+        spec.orientation = orientation;
         spec.persistState = false;
         spec.persistSpawn = false;
         spec.alwaysSpawned = false;
@@ -686,14 +988,17 @@ public class GRSpawner extends ScriptableSystem {
                     let drive: ref<AIVehicleDriveToPointAutonomousCommand> = new AIVehicleDriveToPointAutonomousCommand();
                     drive.targetPosition = Vector4.Vector4To3(player.GetWorldPosition());
                     drive.minimumDistanceToTarget = 10.0;
-                    drive.maxSpeed = 14.0;
-                    drive.minSpeed = 5.0;
+                    // TWR usa 80/10 para sus refuerzos; con 14 llegaban tarde y V ya se habia ido.
+                    drive.maxSpeed = 40.0;
+                    drive.minSpeed = 10.0;
                     drive.clearTrafficOnPath = true;
                     drive.driveDownTheRoadIndefinitely = false;
                     drive.needDriver = true;
                     let evt: ref<AICommandEvent> = new AICommandEvent();
                     evt.command = drive;
                     vehicle.QueueEvent(evt);
+                    // Si el auto se descarga y vuelve a cargar, retoma este comando (como TWR).
+                    vehicle.GetAIComponent().SetInitCmd(drive);
                     GRLog("Vehiculo: conduciendo hacia V");
                 }
                 this.SetVehicleState(3, now);
@@ -800,7 +1105,8 @@ public class GRSpawner extends ScriptableSystem {
         }
         // A ~55 m (minimo ~40) y fuera de la vista de V: se oye el tiroteo y V se acerca, no aparece de la nada.
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
-        let angles: array<Float> = [0.0, 60.0, -60.0, 120.0, -120.0, 180.0];
+        // Detras y a los costados primero; delante nunca (el cono de vista lo descarta igual).
+        let angles: array<Float> = [180.0, 135.0, -135.0, 100.0, -100.0];
         for angle in angles {
             let posA: Vector4 = this.FindSpot(player, angle - 10.0, 55.0, 15.0, 0.75, true);
             if !this.m_spotFound {
@@ -849,12 +1155,15 @@ public class GRSpawner extends ScriptableSystem {
         }
         let list: array<String> = StrSplit(records, ",");
         let orientation: Quaternion = EulerAngles.ToQuat(Vector4.ToRotation(facing - at));
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
         let i: Int32 = 0;
         while i < ArraySize(list) {
-            let raw: Vector4 = at + new Vector4(RandRangeF(-2.5, 2.5) + Cast<Float>(i) * 0.8, RandRangeF(-2.5, 2.5), 0.0, 0.0);
-            // Ajustar al navmesh para no aparecer dentro de paredes; si no hay suelo, en el punto central.
+            let raw: Vector4 = at + new Vector4(RandRangeF(-2.0, 2.0) + Cast<Float>(i) * 0.6, RandRangeF(-2.0, 2.0), 0.0, 0.0);
+            // Cada uno se revisa como el punto central: suelo del mismo piso, sin pared encima y oculto
+            // para V. Si falla, en el punto central (que ya paso esas pruebas).
             let pos: Vector4 = GameInstance.GetNavigationSystem(this.GetGameInstance()).GetNearestNavmeshPointBelowOnlyHumanNavmesh(raw + new Vector4(0.0, 0.0, 1.0, 0.0), 1.0, 5);
-            if Vector4.IsZero(pos) || AbsF(pos.Z - at.Z) > 2.0 {
+            if Vector4.IsZero(pos) || AbsF(pos.Z - at.Z) > 1.0 || !this.IsClearSpot(pos)
+                    || (IsDefined(player) && !this.IsHiddenFromPlayer(player, pos)) {
                 pos = at;
             }
             this.SpawnAt(0, list[i], "", pos, orientation, "", "");
@@ -938,8 +1247,60 @@ public class GRSpawner extends ScriptableSystem {
         }
     }
 
+    // Como ProvokeIdle, pero entre bandos: la hostilidad de SetRaidHostility se pone al aparecer y, si la
+    // IA no estaba lista o el otro bando no habia cargado, policias y pandilleros se quedaban mirando.
+    // Cada 3 s (maximo 10 veces), a cada uno fuera de combate se le marca como amenaza el enemigo vivo
+    // mas cercano. Desde el tick, nunca desde eventos.
+    private func ProvokeRaid(now: Float) {
+        if this.m_provokeAmbush != this.m_ambushStart {
+            this.m_provokeAmbush = this.m_ambushStart;
+            this.m_provokeCount = 0;
+            this.m_provokeAt = now;
+        }
+        if this.m_provokeCount >= 10 || now - this.m_provokeAt < 3.0 {
+            return;
+        }
+        this.m_provokeAt = now;
+        let provoked: Int32 = 0;
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_entityIDs) {
+            let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_entityIDs[i]) as ScriptedPuppet;
+            if IsDefined(npc) && IsDefined(npc.GetAttitudeAgent()) && !GRDetection.IsNeutralized(npc) && !NPCPuppet.IsInCombat(npc) {
+                let nearest: ref<ScriptedPuppet>;
+                let best: Float = 9999.0;
+                let j: Int32 = 0;
+                while j < ArraySize(this.m_entityIDs) {
+                    if this.m_sides[j] != this.m_sides[i] {
+                        let enemy: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_entityIDs[j]) as ScriptedPuppet;
+                        if IsDefined(enemy) && IsDefined(enemy.GetAttitudeAgent()) && !GRDetection.IsNeutralized(enemy) {
+                            npc.GetAttitudeAgent().SetAttitudeTowards(enemy.GetAttitudeAgent(), EAIAttitude.AIA_Hostile);
+                            enemy.GetAttitudeAgent().SetAttitudeTowards(npc.GetAttitudeAgent(), EAIAttitude.AIA_Hostile);
+                            let d: Float = Vector4.Distance(npc.GetWorldPosition(), enemy.GetWorldPosition());
+                            if d < best {
+                                best = d;
+                                nearest = enemy;
+                            }
+                        }
+                    }
+                    j += 1;
+                }
+                if IsDefined(nearest) {
+                    TargetTrackingExtension.InjectThreat(npc, nearest);
+                    StimBroadcasterComponent.SendStimDirectly(nearest, gamedataStimType.CombatHit, npc);
+                    provoked += 1;
+                }
+            }
+            i += 1;
+        }
+        if provoked > 0 {
+            this.m_provokeCount += 1;
+            GRLog("Redada: " + IntToString(provoked) + " NPC fuera de combate, provocados contra el otro bando (" + IntToString(this.m_provokeCount) + "/10)");
+        }
+    }
+
     private func TickRaid(now: Float) {
         this.KeepPoliceFriendly();
+        this.ProvokeRaid(now);
         let fighting: Bool = this.SideAlive(0) > 0 && this.SideAlive(1) > 0;
         if fighting {
             this.m_ambushCalmSince = 0.0;
@@ -952,9 +1313,8 @@ public class GRSpawner extends ScriptableSystem {
             if this.SideAlive(0) == 0 && this.m_raidHitGang {
                 this.m_raidOutcome = this.m_raidHitPolice ? "helpedPoliceHurtCops" : "helpedPolice";
             }
-            GRLog("Fin de redada: limpiando (V gang=" + ToString(this.m_raidHitGang) + " police=" + ToString(this.m_raidHitPolice) + ")");
-            this.CheckNeutralized();
-            this.DespawnAll();
+            GRLog("Fin de redada (V gang=" + ToString(this.m_raidHitGang) + " police=" + ToString(this.m_raidHitPolice) + ")");
+            this.EndEncounter("Fin de redada");
         }
     }
 
@@ -1035,9 +1395,15 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func Tick() {
+        let twr: ref<GRTWRWatch> = GRTWRWatch.Get(this.GetGameInstance());
+        if IsDefined(twr) {
+            twr.Tick();
+        }
         this.CheckNeutralized();
         this.CheckTaunts();
         this.TickImmunity();
+        this.TickBossBar();
+        this.TickLeftovers();
         if !this.m_ambushActive {
             return;
         }
@@ -1056,9 +1422,7 @@ public class GRSpawner extends ScriptableSystem {
         if !this.m_stuckChecked && now - this.m_ambushStart > 40.0 {
             this.m_stuckChecked = true;
             if this.IsStuck() {
-                GRLog("Emboscada atascada: nadie se movio ni cayo en 40 s, limpiando");
-                this.CheckNeutralized();
-                this.DespawnAll();
+                this.EndEncounter("Emboscada atascada (nadie se movio ni cayo en 40 s)");
                 return;
             }
         }
@@ -1066,6 +1430,7 @@ public class GRSpawner extends ScriptableSystem {
             this.TickRaid(now);
             return;
         }
+        this.ProvokeIdle(player, now);
         if player.IsInCombat() {
             this.m_ambushSawCombat = true;
             this.m_ambushCalmSince = 0.0;
@@ -1077,9 +1442,53 @@ public class GRSpawner extends ScriptableSystem {
 
         let calm: Float = now - this.m_ambushCalmSince;
         if (this.m_ambushSawCombat && calm > 20.0) || now - this.m_ambushStart > 180.0 {
-            GRLog("Fin de emboscada: limpiando");
-            this.CheckNeutralized();
-            this.DespawnAll();
+            this.EndEncounter("Fin de emboscada");
+        }
+    }
+
+    // La hostilidad se pone una vez al aparecer; si la IA del NPC no estaba lista, el estimulo se pierde y
+    // queda hostil pero quieto. Cada 3 s se vuelve a provocar a los que esten cerca y fuera de combate
+    // (maximo 6 veces por emboscada). Desde el tick, nunca desde eventos.
+    private func ProvokeIdle(player: ref<PlayerPuppet>, now: Float) {
+        if this.m_provokeAmbush != this.m_ambushStart {
+            this.m_provokeAmbush = this.m_ambushStart;
+            this.m_provokeCount = 0;
+            this.m_provokeAt = now;
+        }
+        if this.m_provokeCount >= 6 || now - this.m_provokeAt < 3.0 {
+            return;
+        }
+        this.m_provokeAt = now;
+        let provoked: Int32 = 0;
+        // Uno que huye o se esconde esta neutral a proposito: no es un NPC "pasivo".
+        let det: ref<GRDetection> = GRDetection.Get(this.GetGameInstance());
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_entityIDs) {
+            let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_entityIDs[i]) as ScriptedPuppet;
+            if IsDefined(npc) && !GRDetection.IsNeutralized(npc) && !NPCPuppet.IsInCombat(npc)
+                && !(IsDefined(det) && det.IsRunningAway(this.m_entityIDs[i]))
+                && Vector4.Distance(npc.GetWorldPosition(), player.GetWorldPosition()) < 60.0
+                && IsDefined(npc.GetAttitudeAgent()) && IsDefined(player.GetAttitudeAgent()) {
+                npc.GetAttitudeAgent().SetAttitudeTowards(player.GetAttitudeAgent(), EAIAttitude.AIA_Hostile);
+                TargetTrackingExtension.InjectThreat(npc, player);
+                StimBroadcasterComponent.SendStimDirectly(player, gamedataStimType.CombatHit, npc);
+                provoked += 1;
+            }
+            i += 1;
+        }
+        if provoked > 0 {
+            this.m_provokeCount += 1;
+            GRLog("Emboscada: " + IntToString(provoked) + " NPC fuera de combate, provocados de nuevo (" + IntToString(this.m_provokeCount) + "/6)");
+        }
+    }
+
+    public func SetBossBar(bar: ref<BossHealthBarGameController>) {
+        this.m_bossBar = bar;
+    }
+
+    private func TickBossBar() {
+        if IsDefined(this.m_bossBar) {
+            this.m_bossBar.GRCleanupBossBar(GetPlayer(this.GetGameInstance()));
         }
     }
 
@@ -1098,13 +1507,181 @@ public class GRSpawner extends ScriptableSystem {
         return true;
     }
 
+    // Boton de debug "Quitar todos": borra todo ya, incluidos los sobrantes.
     public func DespawnAll() {
+        let des: ref<DynamicEntitySystem> = GameInstance.GetDynamicEntitySystem();
+        for id in this.m_leftIDs {
+            des.DeleteEntity(id);
+        }
+        ArrayClear(this.m_leftIDs);
+        ArrayClear(this.m_leftNemesis);
+        ArrayClear(this.m_leftSince);
+        ArrayClear(this.m_leftSent);
+        ArrayClear(this.m_leftNames);
+        des.DeleteTagged(n"GangRetaliation");
+        this.ResetEncounter();
+    }
+
+    // Fin de emboscada o redada sin borrar nada delante de V: todo pasa a sobrantes (ver TickLeftovers)
+    // y la emboscada queda libre para la siguiente.
+    private func EndEncounter(reason: String) {
+        this.CheckNeutralized();
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_entityIDs) {
+            this.AddLeftover(this.m_entityIDs[i], this.m_nemesisIDs[i], this.m_speakers[i]);
+            i += 1;
+        }
+        if EntityID.IsDefined(this.m_vehicleID) {
+            this.AddLeftover(this.m_vehicleID, 0, "");
+        }
+        GRLog(reason + ": " + IntToString(ArraySize(this.m_leftIDs)) + " se borran cuando V no los vea");
+        this.ResetEncounter();
+    }
+
+    public func AddLeftover(id: EntityID, nemesisId: Int32, name: String) {
+        if !EntityID.IsDefined(id) || this.LeftoverIndex(id) >= 0 {
+            return;
+        }
+        ArrayPush(this.m_leftIDs, id);
+        ArrayPush(this.m_leftNemesis, nemesisId);
+        ArrayPush(this.m_leftSince, this.Now());
+        ArrayPush(this.m_leftSent, false);
+        ArrayPush(this.m_leftNames, name);
+    }
+
+    // Huida con flash (V ciega): el spawn propio desaparece ya. Primero el icono y la barra de jefe, para
+    // que no queden colgados; el evento Deleted (OnEntityEvent) lo saca de las listas sin marcarlo muerto.
+    public func Vanish(id: EntityID) {
+        this.HideMarkers(id);
+        GameInstance.GetDynamicEntitySystem().DeleteEntity(id);
+    }
+
+    // Saca el icono y la barra de jefe de un spawn propio (al empezar a huir, antes de desaparecer).
+    public func HideMarkers(id: EntityID) {
+        let isNemesis: Bool = false;
+        let index: Int32 = this.IndexOf(id);
+        if index >= 0 {
+            this.RemoveMappin(index);
+            isNemesis = this.m_nemesisIDs[index] > 0;
+        } else {
+            let left: Int32 = this.LeftoverIndex(id);
+            isNemesis = left >= 0 && this.m_leftNemesis[left] > 0;
+        }
+        if isNemesis {
+            GRNotifyBossBar(GetPlayer(this.GetGameInstance()), null, true);
+        }
+    }
+
+    // Lo uso GRDetection: un sobrante que deja de pelear porque el mod lo mando a irse no "escapo".
+    public func IsLeftover(id: EntityID) -> Bool {
+        return this.LeftoverIndex(id) >= 0;
+    }
+
+    private func LeftoverIndex(id: EntityID) -> Int32 {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_leftIDs) {
+            if this.m_leftIDs[i] == id {
+                return i;
+            }
+            i += 1;
+        }
+        return -1;
+    }
+
+    private func RemoveLeftover(i: Int32) {
+        ArrayErase(this.m_leftIDs, i);
+        ArrayErase(this.m_leftNemesis, i);
+        ArrayErase(this.m_leftSince, i);
+        ArrayErase(this.m_leftSent, i);
+        ArrayErase(this.m_leftNames, i);
+    }
+
+    // V lo tiene en pantalla: dentro de un cono de 100 grados (50 a cada lado, en horizontal) y con
+    // linea de vista (HasLineOfSight, la misma que usan la huida y la busqueda de sitio).
+    private func PlayerSeesPos(player: ref<PlayerPuppet>, pos: Vector4) -> Bool {
+        let toPos: Vector4 = pos - player.GetWorldPosition();
+        toPos.Z = 0.0;
+        if Vector4.GetAngleBetween(player.GetWorldForward(), toPos) > 50.0 {
+            return false;
+        }
+        return this.HasLineOfSight(player, pos);
+    }
+
+    // Se va caminando, neutral con V (como quien se retira despues de la pelea).
+    private func SendAway(npc: ref<ScriptedPuppet>, player: ref<PlayerPuppet>) {
+        let puppet: ref<NPCPuppet> = npc as NPCPuppet;
+        if !IsDefined(puppet) {
+            return;
+        }
+        if IsDefined(npc.GetAttitudeAgent()) && IsDefined(player.GetAttitudeAgent())
+            && NotEquals(GameObject.GetAttitudeBetween(npc, player), EAIAttitude.AIA_Friendly) {
+            npc.GetAttitudeAgent().SetAttitudeTowards(player.GetAttitudeAgent(), EAIAttitude.AIA_Neutral);
+        }
+        GRMoveTo(puppet, GRAwayFrom(npc, player, 60.0), moveMovementType.Walk, 2.0);
+    }
+
+    // Cada segundo. Vivos: se van y se borran fuera de la vista (a mas de 30 m, o a los 120 s), o a
+    // mas de 80 m; a los 300 s se borran igual (alguien trabado a la vista). Cadaveres: solo fuera de
+    // la vista (a mas de 20 m, o a los 60 s). Auto: fuera de la vista y a mas de 30 m, nunca con V adentro.
+    // Si se descargan solos, se sueltan. Los que huyen los maneja GRDetection: aca solo se borran.
+    private func TickLeftovers() {
+        if ArraySize(this.m_leftIDs) == 0 {
+            return;
+        }
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) {
+            return;
+        }
+        let det: ref<GRDetection> = GRDetection.Get(gi);
+        let ridden: wref<GameObject> = GetMountedVehicle(player);
+        let now: Float = this.Now();
+        let i: Int32 = ArraySize(this.m_leftIDs) - 1;
+        while i >= 0 {
+            let id: EntityID = this.m_leftIDs[i];
+            let entity: ref<GameObject> = GameInstance.FindEntityByID(gi, id) as GameObject;
+            let age: Float = now - this.m_leftSince[i];
+            let remove: Bool = !IsDefined(entity);
+            if IsDefined(entity) {
+                let distance: Float = Vector4.Distance(entity.GetWorldPosition(), player.GetWorldPosition());
+                let seen: Bool = this.PlayerSeesPos(player, entity.GetWorldPosition());
+                let npc: ref<ScriptedPuppet> = entity as ScriptedPuppet;
+                if IsDefined(npc) {
+                    if GRDetection.IsNeutralized(npc) {
+                        if this.m_leftNemesis[i] > 0 {
+                            this.MarkDead(id);
+                        }
+                        remove = !seen && (distance > 20.0 || age > 60.0);
+                    } else {
+                        if !this.m_leftSent[i] && !(IsDefined(det) && det.IsRunningAway(id)) {
+                            this.m_leftSent[i] = true;
+                            this.SendAway(npc, player);
+                        }
+                        remove = (!seen && (distance > 30.0 || age > 120.0)) || distance > 80.0 || age > 300.0;
+                    }
+                } else {
+                    let inside: Bool = IsDefined(ridden) && ridden.GetEntityID() == id;
+                    remove = !inside && !seen && distance > 30.0;
+                }
+            }
+            if remove {
+                if this.m_leftNemesis[i] > 0 {
+                    GRNotifyBossBar(player, null, true);
+                    this.TakeLastHit(this.m_leftNemesis[i]);
+                }
+                GameInstance.GetDynamicEntitySystem().DeleteEntity(id);
+                this.RemoveLeftover(i);
+            }
+            i -= 1;
+        }
+    }
+
+    private func ResetEncounter() {
         let i: Int32 = 0;
         while i < ArraySize(this.m_entityIDs) {
             this.RemoveMappin(i);
             i += 1;
         }
-        GameInstance.GetDynamicEntitySystem().DeleteTagged(n"GangRetaliation");
         let taunts: ref<GRTaunts> = GRTaunts.Get(this.GetGameInstance());
         if IsDefined(taunts) {
             taunts.Reset();
@@ -1121,15 +1698,70 @@ public class GRSpawner extends ScriptableSystem {
         this.m_raidMode = false;
         this.m_strongholdMode = false;
         this.m_vehicleState = 0;
+        // Si no, la emboscada siguiente a pie pasaria a sobrantes el auto de una anterior.
+        let none: EntityID;
+        this.m_vehicleID = none;
     }
 
     public func GetSpawnedCount() -> Int32 {
         return ArraySize(this.m_entityIDs);
     }
 
+    // Rango por el nombre que manda CET ("Jefe ...", "Teniente ..."; los Soldados van sin prefijo).
+    private func RankOfSpeaker(speaker: String) -> Int32 {
+        let loc: ref<LocalizationSystem> = LocalizationSystem.GetInstance(this.GetGameInstance());
+        let bossKeys: array<String> = ["GR-RankBoss", "GR-RankBossF"];
+        for key in bossKeys {
+            let label: String = loc.GetText(key);
+            if StrLen(label) > 0 && StrBeginsWith(speaker, label + " ") {
+                return 3;
+            }
+        }
+        let lieutenant: String = loc.GetText("GR-RankLieutenant");
+        if StrLen(lieutenant) > 0 && StrBeginsWith(speaker, lieutenant + " ") {
+            return 2;
+        }
+        return 1;
+    }
+
+    // Nemesis mas duros: vida x ajuste del rango y, si esta activado, nivel de V + extra por rango.
+    // Los modificadores viven en la entidad: al borrarla se van con ella.
+    private func ApplyToughness(index: Int32, npc: ref<ScriptedPuppet>) {
+        let gi: GameInstance = this.GetGameInstance();
+        let settings: ref<GRSettings> = GRSettings.Get(gi);
+        let stats: ref<StatsSystem> = GameInstance.GetStatsSystem(gi);
+        if !IsDefined(settings) || !IsDefined(stats) {
+            return;
+        }
+        let rank: Int32 = this.RankOfSpeaker(this.m_speakers[index]);
+        let id: StatsObjectID = Cast<StatsObjectID>(npc.GetEntityID());
+        let health: Float = rank == 3 ? settings.healthBoss : (rank == 2 ? settings.healthLieutenant : settings.healthSoldier);
+        if health > 1.0 {
+            stats.AddModifier(id, RPGManager.CreateStatModifier(gamedataStatType.Health, gameStatModifierType.Multiplier, health));
+        }
+        let level: String = "district";
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if settings.levelMatchV && IsDefined(player) {
+            let playerId: StatsObjectID = Cast<StatsObjectID>(player.GetEntityID());
+            let extra: Float = Cast<Float>((rank - 1) * settings.levelPerRank);
+            let powerLevel: Float = stats.GetStatValue(playerId, gamedataStatType.PowerLevel) + extra;
+            // Igual que NPCManager.ScaleToPlayer del juego: se quita lo anterior y se pone el valor final.
+            stats.RemoveAllModifiers(id, gamedataStatType.PowerLevel);
+            stats.AddModifier(id, RPGManager.CreateStatModifier(gamedataStatType.PowerLevel, gameStatModifierType.Additive, powerLevel));
+            stats.RemoveAllModifiers(id, gamedataStatType.Level);
+            stats.AddModifier(id, RPGManager.CreateStatModifier(gamedataStatType.Level, gameStatModifierType.Additive, stats.GetStatValue(playerId, gamedataStatType.Level) + extra));
+            level = FloatToStringPrec(powerLevel, 0);
+        }
+        GRLog("Nemesis #" + IntToString(this.m_nemesisIDs[index]) + ": rango " + IntToString(rank) + ", vida x" + FloatToStringPrec(health, 2) + ", nivel " + level);
+    }
+
     private cb func OnEntityEvent(event: ref<DynamicEntityEvent>) {
         let index: Int32 = this.IndexOf(event.GetEntityID());
         if index < 0 {
+            let left: Int32 = this.LeftoverIndex(event.GetEntityID());
+            if left >= 0 && Equals(event.GetEventType(), DynamicEntityEventType.Dead) {
+                this.MarkDead(event.GetEntityID());
+            }
             return;
         }
         let eventType: DynamicEntityEventType = event.GetEventType();
@@ -1137,6 +1769,9 @@ public class GRSpawner extends ScriptableSystem {
         if Equals(eventType, DynamicEntityEventType.Spawned) {
             let npc: ref<ScriptedPuppet> = GameInstance.GetDynamicEntitySystem().GetEntity(event.GetEntityID()) as ScriptedPuppet;
             let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+            if IsDefined(npc) && this.m_nemesisIDs[index] > 0 {
+                this.ApplyToughness(index, npc);
+            }
             if IsDefined(npc) && IsDefined(player) && this.m_raidMode {
                 this.SetRaidHostility(index, npc);
                 if this.m_nemesisIDs[index] > 0 && !this.m_hasMappin[index] {
@@ -1247,6 +1882,12 @@ public class GRSpawner extends ScriptableSystem {
     public func ClearAppearanceReports() {
         ArrayClear(this.m_appearanceReports);
     }
+}
+
+// El juego ya anota si V dano el vehiculo (lo usa para la reaccion de la policia a la explosion).
+@addMethod(VehicleObject)
+public func GRHitByPlayer() -> Bool {
+    return this.m_hitByPlayer;
 }
 
 @wrapMethod(NPCPuppet)
