@@ -630,6 +630,75 @@ local function checkRaid()
     end
 end
 
+-- Guarida (prototipo, una por campana): Lua solo pasa quien vive ahi; aparecer/desaparecer va en GRStronghold.
+-- Viven ahi todos los Nemesis vivos de la banda (Jefe primero). Entre 10 y 20 en total: cada Teniente
+-- vivo suma 3 guardias, asi que matarlos antes debilita la guarida del Jefe.
+local STRONGHOLD_MAX = 20
+local function pushStronghold()
+    local sys = getSystem("GangRetaliation.GRStronghold")
+    if not sys then return end
+    local site = Store.campaign(GR.campaignId).stronghold
+    local key = site and string.format("%d:%s:%.1f:%.1f", GR.campaignId, site.gang, site.x, site.y) or ""
+    if key ~= GR.siteKey then
+        GR.siteKey = key
+        if site then sys:SetSite(site.gang, site.x, site.y, site.z) else sys:ClearSite() end
+    end
+    if not site then return end
+
+    local members = {}
+    for _, n in ipairs(Store.campaign(GR.campaignId).nemeses) do
+        if n.gang == site.gang and n.status ~= "dead" and not n.jailedUntil and n.recordID then
+            table.insert(members, n)
+        end
+    end
+    table.sort(members, function(a, b)
+        if (a.rank or 1) ~= (b.rank or 1) then return (a.rank or 1) > (b.rank or 1) end
+        return (a.renown or 0) > (b.renown or 0)
+    end)
+    sys:ClearMembers()
+    local lieutenants, boss = 0, false
+    for i, n in ipairs(members) do
+        if i > STRONGHOLD_MAX then break end
+        pushTraits(n)
+        sys:AddMember(n.id, n.recordID, n.appearance or "", fullName(n))
+        if n.rank == Hierarchy.LIEUTENANT then lieutenants = lieutenants + 1 end
+        if n.rank == Hierarchy.BOSS then boss = true end
+    end
+    local guards = math.min(8 + 3 * lieutenants + (boss and 2 or 0), STRONGHOLD_MAX - math.min(#members, STRONGHOLD_MAX))
+    sys:SetGuards(guards > 0 and groupRecords(site.gang, guards) or "")
+end
+
+local function strongholdEvents()
+    local sys = getSystem("GangRetaliation.GRStronghold")
+    if not sys then return end
+    local site = Store.campaign(GR.campaignId).stronghold
+    local gang = site and Names.gangLabel(site.gang) or "?"
+    local ev = sys:TakeEvent()
+    while ev ~= "" do
+        -- Llegar a la guarida no se avisa (discreto): V la descubre al ver a los guardias.
+        if ev == "cleared" then
+            notify(string.format(text("GR-MsgStrongholdCleared", "The %s stronghold has fallen."), gang))
+        end
+        ev = sys:TakeEvent()
+    end
+end
+
+-- Dev: barrio de V y bandas de ese barrio para el panel de sitios (como mucho una consulta por segundo).
+local function siteContext(campaign)
+    local now = os.clock()
+    if GR.siteCtx and now - GR.siteCtx.t < 1 then return GR.siteCtx end
+    local warSys = getSystem("GangRetaliation.GRWar")
+    local spawner = getSpawner()
+    local district = warSys and warSys:GetCurrentDistrict() or ""
+    local set = (warSys and War.districtGangs(campaign, district))
+        or Ambush.parseGangs(spawner and spawner:GetDistrictGangs() or "")
+    local list = {}
+    for gang in pairs(set) do table.insert(list, gang) end
+    table.sort(list)
+    GR.siteCtx = { t = now, district = district, label = districtLabel(campaign, district), gangs = list }
+    return GR.siteCtx
+end
+
 local function updateHierarchy(feudChance, policeChance)
     local settings = getSettings()
     local spawner = getSpawner()
@@ -888,6 +957,15 @@ local function update(delta)
         if spawner then spawner:Tick() end
         local warSys = getSystem("GangRetaliation.GRWar")
         if warSys then warSys:Tick() end
+        if Store.version ~= GR.strongholdVersion or GR.campaignId ~= GR.strongholdCampaign then
+            GR.strongholdVersion = Store.version
+            GR.strongholdCampaign = GR.campaignId
+            local okS, errS = pcall(pushStronghold)
+            if not okS then print("[GangRetaliation] Error en guarida: " .. tostring(errS)) end
+        end
+        local stronghold = getSystem("GangRetaliation.GRStronghold")
+        if stronghold then stronghold:Tick() end
+        pcall(strongholdEvents)
         pcall(updatePendingAmbush)
         pcall(updateHomes)
         -- El menu solo se reconstruye si cambiaron los datos (o la campana). Cada 30 s igual,
@@ -931,7 +1009,82 @@ end
 
 -- Dev: cuanto tarda onUpdate (promedio y pico por segundo), para medir el rendimiento.
 GR.perf = { sum = 0, frames = 0, peak = 0, time = 0, avgMs = 0, peakMs = 0 }
+-- Dev: vuelo con noclip para recorrer la ciudad buscando sitios. V se teletransporta cada frame hacia donde
+-- mira la camara (atraviesa paredes y no cae) y es invulnerable hasta 10 s despues de apagarlo.
+GR.fly = { on = false, f = 0, b = 0, l = 0, r = 0, up = 0, down = 0, fast = false, godUntil = 0 }
+
+local function setFlyGod(on)
+    local player = Game.GetPlayer()
+    if not player then return end
+    local god = Game.GetGodModeSystem()
+    if on then
+        god:AddGodMode(player:GetEntityID(), gameGodModeType.Invulnerable, CName.new("GRFly"))
+    else
+        god:RemoveGodMode(player:GetEntityID(), gameGodModeType.Invulnerable, CName.new("GRFly"))
+    end
+end
+
+local function toggleFly()
+    local fly = GR.fly
+    local player = Game.GetPlayer()
+    if not player then return end
+    fly.on = not fly.on
+    if fly.on then
+        fly.hold = player:GetWorldPosition()
+        fly.godUntil = 0
+        setFlyGod(true)
+    else
+        fly.godUntil = os.clock() + 10
+    end
+end
+
+local function updateFly(delta)
+    local fly = GR.fly
+    if not fly.on then
+        if fly.godUntil > 0 and os.clock() > fly.godUntil then
+            fly.godUntil = 0
+            setFlyGod(false)
+        end
+        return
+    end
+    local player = Game.GetPlayer()
+    if not player or not fly.hold then return end
+    local cam = Game.GetCameraSystem()
+    local fwd, right = cam:GetActiveCameraForward(), cam:GetActiveCameraRight()
+    local step = (fly.fast and 60 or 15) * math.min(delta, 0.1)
+    local ahead, side, lift = fly.f - fly.b, fly.r - fly.l, fly.up - fly.down
+    local h = fly.hold
+    fly.hold = ToVector4{
+        x = h.x + (fwd.x * ahead + right.x * side) * step,
+        y = h.y + (fwd.y * ahead + right.y * side) * step,
+        z = h.z + (fwd.z * ahead + lift) * step,
+        w = 1,
+    }
+    Game.GetTeleportationFacility():Teleport(player, fly.hold, ToEulerAngles{ roll = 0, pitch = 0, yaw = player:GetWorldYaw() })
+end
+
+if GR.dev then
+    local function held(key)
+        return function(down) GR.fly[key] = down and 1 or 0 end
+    end
+    registerInput("gr_fly_forward", "Fly: forward", held("f"))
+    registerInput("gr_fly_back", "Fly: back", held("b"))
+    registerInput("gr_fly_left", "Fly: left", held("l"))
+    registerInput("gr_fly_right", "Fly: right", held("r"))
+    registerInput("gr_fly_up", "Fly: up", held("up"))
+    registerInput("gr_fly_down", "Fly: down", held("down"))
+    registerInput("gr_fly_fast", "Fly: fast (hold)", function(down) GR.fly.fast = down end)
+    registerHotkey("gr_fly_toggle", "Fly: on/off", function() pcall(toggleFly) end)
+end
+
 registerForEvent("onUpdate", function(delta)
+    if GR.dev then
+        local okF, errF = pcall(updateFly, delta)
+        if not okF then
+            GR.fly.on = false
+            print("[GangRetaliation] Error en fly: " .. tostring(errF))
+        end
+    end
     if not GR.dev then return update(delta) end
     local start = os.clock()
     update(delta)
@@ -1142,6 +1295,88 @@ registerForEvent("onDraw", function()
                 local ok, res = pcall(trySkirmish, true)
                 GR.lastAction = tostring(res)
             end
+            ImGui.Separator()
+            local campaign = Store.ensureCampaign(GR.campaignId)
+            local gangs = Hierarchy.knownGangs(campaign)
+            table.sort(gangs)
+            local ctx = siteContext(campaign)
+            -- Al cambiar de barrio se elige sola la primera banda del barrio (se puede cambiar a mano).
+            if ctx.district ~= GR.siteDistrict then
+                GR.siteDistrict = ctx.district
+                for i, gang in ipairs(gangs) do
+                    if gang == ctx.gangs[1] then GR.siteGang = i end
+                end
+            end
+            ImGui.Text(string.format("District: %s | Gangs here: %s", ctx.label ~= "" and ctx.label or "?",
+                #ctx.gangs > 0 and table.concat(ctx.gangs, ", ") or "none"))
+            if #gangs > 0 then
+                GR.siteGang = math.min(GR.siteGang or 1, #gangs)
+                GR.siteGang = ImGui.Combo("##sitegang", GR.siteGang - 1, gangs, #gangs) + 1
+                ImGui.SameLine()
+                if ImGui.Button("Stronghold: set here") then
+                    local pos = Game.GetPlayer():GetWorldPosition()
+                    campaign.stronghold = { gang = gangs[GR.siteGang], x = pos.x, y = pos.y, z = pos.z }
+                    Store.dirty = true
+                    GR.lastAction = string.format("guarida %s en %.1f, %.1f, %.1f", gangs[GR.siteGang], pos.x, pos.y, pos.z)
+                end
+            end
+            -- Sitios candidatos para las guaridas fijas: se recorren a mano y despues se pasan al codigo.
+            local inDistrict = false
+            for _, gang in ipairs(ctx.gangs) do
+                if gang == gangs[GR.siteGang or 1] then inDistrict = true end
+            end
+            if #gangs > 0 and ImGui.Button(string.format("Save site: %s @ %s%s##savesite", gangs[GR.siteGang or 1] or "?",
+                ctx.label ~= "" and ctx.label or "?", inDistrict and "" or " (NOT their district)")) then
+                local ok, res = pcall(function()
+                    local pos = Game.GetPlayer():GetWorldPosition()
+                    local sys = getSystem("GangRetaliation.GRStronghold")
+                    local warSys = getSystem("GangRetaliation.GRWar")
+                    local site = { gang = gangs[GR.siteGang], x = pos.x, y = pos.y, z = pos.z,
+                        district = warSys and warSys:GetCurrentDistrict() or "", districtGangs = ctx.gangs,
+                        posts = sys and sys:TestSite(pos.x, pos.y, pos.z) or -1 }
+                    local list = Store.loadSites()
+                    table.insert(list, site)
+                    Store.saveSites(list)
+                    return string.format("sitio #%d %s (%s): %d/20 puestos", #list, site.gang, site.district, site.posts)
+                end)
+                GR.lastAction = tostring(res)
+            end
+            ImGui.SameLine()
+            if ImGui.Button("Test spot") then
+                local pos = Game.GetPlayer():GetWorldPosition()
+                local sys = getSystem("GangRetaliation.GRStronghold")
+                GR.lastAction = sys and string.format("aqui entran %d/20 puestos", sys:TestSite(pos.x, pos.y, pos.z)) or "no system"
+            end
+            ImGui.SameLine()
+            if ImGui.Button("Remove last candidate") then
+                local list = Store.loadSites()
+                local removed = table.remove(list)
+                Store.saveSites(list)
+                GR.lastAction = removed and string.format("borrado %s (%s), quedan %d", removed.gang, removed.district, #list) or "no hay sitios"
+            end
+            if campaign.stronghold then
+                local sys = getSystem("GangRetaliation.GRStronghold")
+                local inside = sys and sys:GetMemberCount() or 0
+                ImGui.Text(string.format("Stronghold %s: %.0f m, %d inside%s%s", campaign.stronghold.gang,
+                    sys and sys:GetDistance() or -1, inside, inside == 0 and " (nobody alive: won't spawn)" or "",
+                    (sys and sys:IsActive()) and " (active)" or ""))
+                if ImGui.Button("Stronghold: teleport there") then
+                    local site = campaign.stronghold
+                    local player = Game.GetPlayer()
+                    Game.GetTeleportationFacility():Teleport(player, ToVector4{ x = site.x, y = site.y, z = site.z + 0.5, w = 1 },
+                        ToEulerAngles{ roll = 0, pitch = 0, yaw = player:GetWorldYaw() })
+                end
+                ImGui.SameLine()
+                if ImGui.Button("Stronghold: respawn") and sys then sys:Respawn() end
+                ImGui.SameLine()
+                if ImGui.Button("Remove stronghold") then
+                    campaign.stronghold = nil
+                    Store.dirty = true
+                end
+            end
+            if ImGui.Button(GR.fly.on and "Fly: ON (click to land)" or "Fly (noclip)") then pcall(toggleFly) end
+            ImGui.SameLine()
+            ImGui.TextDisabled("keys: CET > Bindings > Gang Retaliation (Fly: ...)")
             if ImGui.Button("Save now") then Store.save() end
             ImGui.SameLine()
             if ImGui.Button("Clear campaign") then Store.clearCampaign(GR.campaignId) end

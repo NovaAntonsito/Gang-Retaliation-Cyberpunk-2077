@@ -58,6 +58,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-MsgPoliceArrest", "Rumor: the NCPD arrested %s. They will be out in a few days.");
         this.Text("GR-MsgPoliceEscape", "Rumor: %s shot their way out of an NCPD raid.");
         this.Text("GR-MsgRaid", "The NCPD is raiding %s nearby!");
+        this.Text("GR-MsgStrongholdCleared", "The %s stronghold has fallen.");
         this.Text("GR-SmsRaidBounty", "Thanks for the assist, citizen. %d eurodollars have been wired to your account.");
         this.Text("GR-SmsRaidBountyCut", "Thanks for the assist, citizen. %d eurodollars were deducted for our wounded officers' medical bills. %d eurodollars have been wired to your account.");
         this.Text("GR-MsgReleased", "%s is back on the street.");
@@ -347,6 +348,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-MsgPoliceArrest", "Rumor: la NCPD ha arrestado a %s. Saldrá en unos días.");
         this.Text("GR-MsgPoliceEscape", "Rumor: %s escapó a tiros de una redada de la NCPD.");
         this.Text("GR-MsgRaid", "¡La NCPD está haciendo una redada contra %s aquí cerca!");
+        this.Text("GR-MsgStrongholdCleared", "La guarida de los %s ha caído.");
         this.Text("GR-SmsRaidBounty", "Gracias por la ayuda, ciudadano. Te hemos transferido %d eurodólares.");
         this.Text("GR-SmsRaidBountyCut", "Gracias por la ayuda, ciudadano. Descontamos %d eurodólares por los gastos médicos de los agentes heridos. Te hemos transferido %d eurodólares.");
         this.Text("GR-MsgReleased", "%s vuelve a estar en la calle.");
