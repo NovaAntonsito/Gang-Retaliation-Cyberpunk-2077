@@ -17,6 +17,8 @@ public class GRSpawner extends ScriptableSystem {
     private let m_sides: array<Int32>;
     private let m_spawnSide: Int32;
     private let m_raidMode: Bool;
+    // Guarida: los NPCs esperan en su puesto (hostiles, pero sin saber donde esta V). GRStronghold decide el fin.
+    private let m_strongholdMode: Bool;
     private let m_raidHitGang: Bool;
     private let m_raidHitPolice: Bool;
     private let m_raidOutcome: String;
@@ -1479,6 +1481,55 @@ public class GRSpawner extends ScriptableSystem {
         }
     }
 
+    public func BeginStronghold() {
+        this.m_raidMode = false;
+        this.m_strongholdMode = true;
+        this.m_vehicleState = 0;
+        this.m_ambushActive = true;
+        this.m_ambushStart = this.Now();
+        this.m_ambushSawCombat = false;
+    }
+
+    public func IsStrongholdActive() -> Bool {
+        return this.m_ambushActive && this.m_strongholdMode;
+    }
+
+    // Puesto alrededor del centro de la guarida, ajustado al navmesh y en el mismo piso.
+    public func PostSpot(center: Vector4, angle: Float, radius: Float) -> Vector4 {
+        let raw: Vector4 = center + new Vector4(CosF(angle) * radius, SinF(angle) * radius, 1.0, 0.0);
+        let pos: Vector4 = GameInstance.GetNavigationSystem(this.GetGameInstance()).GetNearestNavmeshPointBelowOnlyHumanNavmesh(raw, 2.0, 5);
+        if Vector4.IsZero(pos) || AbsF(pos.Z - center.Z) > 3.0 || !this.IsClearSpot(pos) {
+            return Vector4.EmptyVector();
+        }
+        if radius > 0.5 && !this.IsConnected(center, pos) {
+            return Vector4.EmptyVector();
+        }
+        return pos;
+    }
+
+    // Mirando hacia fuera de la guarida (vigilan los accesos).
+    public func SpawnPosted(nemesisId: Int32, recordID: String, appearance: String, pos: Vector4, center: Vector4, speaker: String) -> Bool {
+        let out: Vector4 = pos - center;
+        if Vector4.Length(out) < 0.5 {
+            out = new Vector4(RandRangeF(-1.0, 1.0), RandRangeF(-1.0, 1.0), 0.0, 0.0);
+        }
+        out.Z = 0.0;
+        return this.SpawnAt(nemesisId, recordID, appearance, pos, EulerAngles.ToQuat(Vector4.ToRotation(out)), "", speaker);
+    }
+
+    public func CountStanding() -> Int32 {
+        let alive: Int32 = 0;
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_entityIDs) {
+            let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_entityIDs[i]) as ScriptedPuppet;
+            if !IsDefined(npc) || !GRDetection.IsNeutralized(npc) {
+                alive += 1;
+            }
+            i += 1;
+        }
+        return alive;
+    }
+
     public func IsAmbushActive() -> Bool {
         return this.m_ambushActive;
     }
@@ -1526,6 +1577,9 @@ public class GRSpawner extends ScriptableSystem {
         let now: Float = this.Now();
         if this.m_vehicleState >= 1 && this.m_vehicleState <= 3 {
             this.TickVehicle(player, now);
+            return;
+        }
+        if this.m_strongholdMode {
             return;
         }
         if !this.m_stuckChecked && now - this.m_ambushStart > 40.0 {
@@ -1805,6 +1859,7 @@ public class GRSpawner extends ScriptableSystem {
         ArrayClear(this.m_sides);
         this.m_ambushActive = false;
         this.m_raidMode = false;
+        this.m_strongholdMode = false;
         this.m_vehicleState = 0;
         // Si no, la emboscada siguiente a pie pasaria a sobrantes el auto de una anterior.
         let none: EntityID;
@@ -1882,6 +1937,13 @@ public class GRSpawner extends ScriptableSystem {
             }
             if IsDefined(npc) && IsDefined(player) && this.m_raidMode {
                 this.SetRaidHostility(index, npc);
+                if this.m_nemesisIDs[index] > 0 && !this.m_hasMappin[index] {
+                    this.AddMappin(index, npc);
+                    ArrayPush(this.m_appearanceReports, IntToString(this.m_nemesisIDs[index]) + ":" + NameToString(npc.GetCurrentAppearanceName()));
+                }
+            } else if IsDefined(npc) && IsDefined(player) && this.m_strongholdMode {
+                // Hostiles sin estimulo: atacan cuando ven a V, asi se puede entrar en sigilo.
+                npc.GetAttitudeAgent().SetAttitudeTowards(player.GetAttitudeAgent(), EAIAttitude.AIA_Hostile);
                 if this.m_nemesisIDs[index] > 0 && !this.m_hasMappin[index] {
                     this.AddMappin(index, npc);
                     ArrayPush(this.m_appearanceReports, IntToString(this.m_nemesisIDs[index]) + ":" + NameToString(npc.GetCurrentAppearanceName()));

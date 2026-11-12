@@ -87,6 +87,26 @@ end
 
 local EMPTY_CAMPAIGN = { nemeses = {} }
 
+-- Dev: sitios candidatos para guaridas (archivo aparte, no depende de la campana).
+Store.sitesPath = "data/site_candidates.json"
+
+function Store.loadSites()
+    local file = io.open(Store.sitesPath, "r")
+    if not file then return {} end
+    local content = file:read("*a")
+    file:close()
+    local ok, decoded = pcall(json.decode, content)
+    return (ok and type(decoded) == "table") and decoded or {}
+end
+
+function Store.saveSites(list)
+    local file = io.open(Store.sitesPath, "w")
+    if not file then return false end
+    file:write(json.encode(list))
+    file:close()
+    return true
+end
+
 function Store.campaign(id)
     if not Store.data then Store.load() end
     return Store.data.campaigns[tostring(id)] or EMPTY_CAMPAIGN

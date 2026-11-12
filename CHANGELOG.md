@@ -4,6 +4,14 @@
 
 ### English
 
+#### Added
+- **Gang strongholds.** Each gang now has a fixed stronghold in its own part of the city (the
+  Barghest one is in Dogtown and needs Phantom Liberty). While the gang has at least one living
+  Nemesis, its stronghold is on the map from the start: they all live there, the Boss in the middle,
+  with guards around them (more for each living Lieutenant). Get close and they are at their posts.
+  Kill them all and the stronghold falls and leaves the map. It comes back when the gang has
+  Nemeses again.
+
 #### Changed
 - **Barghest raids in Dogtown.** In Dogtown the NCPD does not raid: Barghest soldiers do. They hunt
   Nemeses of other gangs, with their own messages and no NCPD bounty SMS.
@@ -17,6 +25,13 @@
   of the tracked job. Gang skirmishes follow the same rules (no swimming, no mission objective nearby).
 
 ### Español
+
+#### Nuevo
+- **Guaridas de bandas.** Cada banda tiene ahora una guarida fija en su zona de la ciudad (la de
+  Barghest está en Dogtown y necesita Phantom Liberty). Mientras la banda tenga al menos un Némesis
+  vivo, su guarida aparece en el mapa desde el principio: todos viven ahí, el Jefe en el centro, con
+  guardias alrededor (más por cada Teniente vivo). Al acercarte están en sus puestos. Si los matás a
+  todos, la guarida cae y sale del mapa. Vuelve cuando la banda tiene Némesis otra vez.
 
 #### Cambiado
 - **Redadas de Barghest en Dogtown.** En Dogtown no hace redadas la NCPD sino soldados de Barghest.
