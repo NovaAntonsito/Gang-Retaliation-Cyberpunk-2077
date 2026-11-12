@@ -1,5 +1,36 @@
 # Changelog - Gang Retaliation
 
+## [Unreleased]
+
+### English
+
+#### Changed
+- **Barghest raids in Dogtown.** In Dogtown the NCPD does not raid: Barghest soldiers do. They hunt
+  Nemeses of other gangs, with their own messages and no NCPD bounty SMS.
+
+#### Fixed
+- **Drones and mechs no longer become Nemeses.** A drone, mech or robot that survived a fight could
+  be promoted and later come back as a "Nemesis". Machines are now never promoted, and machine
+  Nemeses saved by an older version are removed from the campaign when it loads.
+- **No more ambushes underwater.** Ambushes no longer start while V is swimming or diving.
+- **No more ambushes on top of a mission.** Ambushes no longer start within 150 m of the objective
+  of the tracked job. Gang skirmishes follow the same rules (no swimming, no mission objective nearby).
+
+### Español
+
+#### Cambiado
+- **Redadas de Barghest en Dogtown.** En Dogtown no hace redadas la NCPD sino soldados de Barghest.
+  Cazan Némesis de otras bandas, con avisos propios y sin el SMS de recompensa de la NCPD.
+
+#### Arreglado
+- **Los drones y los mechs ya no se vuelven Némesis.** Un drone, mech o robot que sobrevivía a una
+  pelea podía ascender y volver después como "Némesis". Ahora las máquinas nunca ascienden, y los
+  Némesis-máquina guardados por una versión anterior se borran de la campaña al cargarla.
+- **No más emboscadas bajo el agua.** Las emboscadas ya no empiezan mientras V nada o bucea.
+- **No más emboscadas encima de una misión.** Las emboscadas ya no empiezan a menos de 150 m del
+  objetivo del trabajo que V está siguiendo. Las escaramuzas entre bandas siguen las mismas reglas
+  (ni nadando ni cerca del objetivo de una misión).
+
 ## [1.3.4] - 2026-11-10
 
 ### English

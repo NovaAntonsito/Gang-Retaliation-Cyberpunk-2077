@@ -102,6 +102,9 @@ public class GRDetection extends ScriptableSystem {
         }
 
         let record: wref<Character_Record> = npc.GetRecord();
+        if GRDetection.IsMachineRecord(record) {
+            return false;
+        }
         if IsDefined(record) && IsDefined(record.Rarity()) {
             let rarity: gamedataNPCRarity = record.Rarity().Type();
             if Equals(rarity, gamedataNPCRarity.Boss) || Equals(rarity, gamedataNPCRarity.MaxTac) {
@@ -109,6 +112,30 @@ public class GRDetection extends ScriptableSystem {
             }
         }
         return NotEquals(GRDetection.GetGang(npc), "");
+    }
+
+    // Drones, mechs, robots y androides con afiliacion de banda (drones de Maelstrom/Wraiths/Barghest,
+    // Minotauros y droides de Barghest): no son personas, no pueden ser Nemesis ni huir. En TweakDB todo
+    // lo demas de las 9 bandas es Human. Sin tipo en el record (NPC de otro mod) no se descarta.
+    // Solo lee TweakDB: se puede llamar desde los hooks de golpe.
+    public static func IsMachineRecord(record: wref<Character_Record>) -> Bool {
+        if !IsDefined(record) || !IsDefined(record.CharacterType()) {
+            return false;
+        }
+        let kind: gamedataNPCType = record.CharacterType().Type();
+        return Equals(kind, gamedataNPCType.Drone) || Equals(kind, gamedataNPCType.Mech)
+            || Equals(kind, gamedataNPCType.Spiderbot) || Equals(kind, gamedataNPCType.Android)
+            || Equals(kind, gamedataNPCType.Cerberus) || Equals(kind, gamedataNPCType.Chimera)
+            || Equals(kind, gamedataNPCType.Device);
+    }
+
+    public static func IsMachine(npc: ref<ScriptedPuppet>) -> Bool {
+        return IsDefined(npc) && GRDetection.IsMachineRecord(npc.GetRecord());
+    }
+
+    // Por el texto del record guardado de un Nemesis ("Character.maelstrom_base_drone_wyvern").
+    public static func IsMachineRecordID(recordID: String) -> Bool {
+        return GRDetection.IsMachineRecord(TweakDBInterface.GetCharacterRecord(TDBID.Create(recordID)));
     }
 
     // Jackie (Valentino) y otros acompañantes: un golpe de V por error no los vuelve candidatos.

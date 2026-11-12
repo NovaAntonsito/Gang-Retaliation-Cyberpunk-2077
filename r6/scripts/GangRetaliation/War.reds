@@ -141,6 +141,13 @@ public class GRWar extends ScriptableSystem {
         if IsDefined(spawner) && spawner.IsInScene() {
             return "scene (no weapons)";
         }
+        // Los mismos dos bloqueos que las emboscadas (GRSpawner.GetAmbushBlocker).
+        if IsDefined(spawner) && spawner.IsPlayerSwimming() {
+            return "underwater";
+        }
+        if IsDefined(spawner) && spawner.IsQuestObjectiveNearby() {
+            return "quest objective nearby";
+        }
         if GRSpawner.IsTWRSquadActive() {
             return "They Will Remember squad";
         }

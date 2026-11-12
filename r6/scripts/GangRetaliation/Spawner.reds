@@ -24,6 +24,9 @@ public class GRSpawner extends ScriptableSystem {
     private let m_policeImmune: Bool;
     private let m_immuneRaidEnd: Float;
     private let m_raidPoliceOnV: Bool;
+    // Los que hacen la redada (bando 1: NCPD, o Barghest en Dogtown). No se borra al terminar la redada:
+    // siguen contando mientras se van como sobrantes (ver IsRaidForce). Se reinicia en la redada siguiente.
+    private let m_raidForceIDs: array<EntityID>;
 
     private let m_deaths: array<Int32>;
     private let m_deathKinds: array<String>;
@@ -74,6 +77,10 @@ public class GRSpawner extends ScriptableSystem {
     private let m_leftSent: array<Bool>;
     // Nombre completo del Nemesis (escaner y barra de jefe) mientras se va.
     private let m_leftNames: array<String>;
+
+    // Ultimo Nemesis-maquina rechazado y cuando: la emboscada anunciada reintenta cada 5 s y llenaba el log.
+    private let m_machineLoggedId: Int32;
+    private let m_machineLoggedAt: Float;
 
     public static func Get(gi: GameInstance) -> ref<GRSpawner> {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRSpawner") as GRSpawner;
@@ -396,6 +403,9 @@ public class GRSpawner extends ScriptableSystem {
         ArrayPush(this.m_mappins, noMappin);
         ArrayPush(this.m_hasMappin, false);
         ArrayPush(this.m_sides, this.m_spawnSide);
+        if this.m_spawnSide == 1 {
+            ArrayPush(this.m_raidForceIDs, entityID);
+        }
         return true;
     }
 
@@ -573,9 +583,33 @@ public class GRSpawner extends ScriptableSystem {
         }
     }
 
+    // Nemesis guardado con un record de drone/mech/robot (las versiones hasta 1.3.x los ascendian): no se
+    // genera. Lo consultan todos los caminos que generan un Nemesis por su record. El aviso sale como mucho
+    // una vez por minuto por Nemesis.
+    private func IsMachineNemesis(nemesisId: Int32, recordID: String, what: String) -> Bool {
+        if !GRDetection.IsMachineRecordID(recordID) {
+            return false;
+        }
+        let now: Float = this.Now();
+        if this.m_machineLoggedId != nemesisId || this.m_machineLoggedAt <= 0.0 || now - this.m_machineLoggedAt > 60.0 || now < this.m_machineLoggedAt {
+            this.m_machineLoggedId = nemesisId;
+            this.m_machineLoggedAt = now;
+            GRLog(what + ": Nemesis #" + IntToString(nemesisId) + " no se genera, su record es una maquina (drone/mech/robot): " + recordID);
+        }
+        return true;
+    }
+
+    // Para CET: al cargar la campana saca a los Nemesis guardados cuyo record es una maquina.
+    public func IsMachineRecordID(recordID: String) -> Bool {
+        return GRDetection.IsMachineRecordID(recordID);
+    }
+
     public func SpawnNearPlayer(nemesisId: Int32, recordID: String, appearance: String, distance: Float, name: String) -> Bool {
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
         if !IsDefined(player) || this.IsNemesisSpawned(nemesisId) {
+            return false;
+        }
+        if this.IsMachineNemesis(nemesisId, recordID, "Generar cerca") {
             return false;
         }
         let pos: Vector4 = this.FindReachableSpot(player, 0.0, distance);
@@ -604,6 +638,12 @@ public class GRSpawner extends ScriptableSystem {
         if this.IsInScene() {
             return "scene (no weapons)";
         }
+        if this.IsPlayerSwimming() {
+            return "underwater";
+        }
+        if this.IsQuestObjectiveNearby() {
+            return "quest objective nearby";
+        }
         if GRSpawner.IsTWRSquadActive() {
             return "They Will Remember squad";
         }
@@ -611,6 +651,25 @@ public class GRSpawner extends ScriptableSystem {
             return "Drug Dealer job";
         }
         return "";
+    }
+
+    // V nadando o buceando (cualquier estado de nado distinto del normal: superficie, buceo, saliendo del
+    // agua). Lo mismo que lee PlayerPuppet.IsSwimming del juego. Reporte: emboscada en el buceo con Judy.
+    public func IsPlayerSwimming() -> Bool {
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if !IsDefined(player) {
+            return false;
+        }
+        let swimming: Int32 = player.GetPlayerStateMachineBlackboard().GetInt(GetAllBlackboardDefs().PlayerStateMachine.Swimming);
+        return swimming != EnumInt(gamePSMSwimming.Default);
+    }
+
+    // V a menos de 150 m (en horizontal) de algun punto del objetivo que esta siguiendo, sea del tipo de
+    // mision que sea: ahi una emboscada cae en medio de la mision. Sin objetivo seguido o sin punto en el
+    // mapa no bloquea. Usa la distancia cacheada de GetTrackedObjectiveDistance.
+    public func IsQuestObjectiveNearby() -> Bool {
+        let distance: Float = this.GetTrackedObjectiveDistance();
+        return distance >= 0.0 && distance < 150.0;
     }
 
     // Para CET (Integrations.reds): escuadron de TWR/DD cerca ("TWR|Banda") y multiplicador de emboscadas.
@@ -674,11 +733,11 @@ public class GRSpawner extends ScriptableSystem {
     // Distancia horizontal de V al punto mas cercano del objetivo seguido (-1 = sin punto en el mapa).
     // Igual que el mapa del juego (worldMap.swift): solo si la entrada seguida es un objetivo, y con su hash.
     // GetQuestMappinPosition NO va aca: espera el hash de un mappin, no de un objetivo (sospecha del crash
-    // del 31/10). Se recalcula como mucho una vez por segundo (el panel CET lo pide en cada frame).
-    // m_objectivePins / m_objectiveSource quedan para el panel dev.
+    // del 31/10). Se recalcula como mucho una vez cada 2 s (el panel CET lo pide en cada frame y el bloqueo
+    // de emboscadas en cada tick). m_objectivePins / m_objectiveSource quedan para el panel dev.
     public func GetTrackedObjectiveDistance() -> Float {
         let now: Float = this.Now();
-        if this.m_objectiveCheckedAt > 0.0 && now - this.m_objectiveCheckedAt < 1.0 {
+        if this.m_objectiveCheckedAt > 0.0 && now >= this.m_objectiveCheckedAt && now - this.m_objectiveCheckedAt < 2.0 {
             return this.m_objectiveDistance;
         }
         this.m_objectiveCheckedAt = now;
@@ -863,6 +922,9 @@ public class GRSpawner extends ScriptableSystem {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
             GRLog("Vehiculo: no se intenta (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            return false;
+        }
+        if this.IsMachineNemesis(nemesisId, recordID, "Vehiculo") {
             return false;
         }
         if !IsDefined(TweakDBInterface.GetVehicleRecord(TDBID.Create(vehicleRecord))) {
@@ -1064,6 +1126,10 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     private func SpawnGroup(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String, distance: Float) -> Bool {
+        // Emboscada a pie y refuerzo en gig pasan los dos por aca.
+        if this.IsMachineNemesis(nemesisId, recordID, "A pie") {
+            return false;
+        }
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
 
         // Detras de V (arco de +-60 grados), sin acercarse a menos del 70% de la distancia: no aparecen
@@ -1097,9 +1163,104 @@ public class GRSpawner extends ScriptableSystem {
         return true;
     }
 
+    // V en Dogtown: el distrito actual o alguno de arriba se llama "Dogtown..." (Dogtown, Dogtown_Akebono,
+    // Dogtown_Brooklyn...). La misma fuente que GetDistrictName y GRWar.GetCurrentDistrict.
+    public func IsInDogtown() -> Bool {
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if !IsDefined(player) || !IsDefined(player.GetPreventionSystem()) {
+            return false;
+        }
+        let current: wref<District> = player.GetPreventionSystem().GetCurrentDistrict();
+        if !IsDefined(current) {
+            return false;
+        }
+        let district: wref<District_Record> = current.GetDistrictRecord();
+        let depth: Int32 = 0;
+        while IsDefined(district) && depth < 6 {
+            if StrBeginsWith(district.EnumName(), "Dogtown") {
+                return true;
+            }
+            district = district.ParentDistrict();
+            depth += 1;
+        }
+        return false;
+    }
+
+    // Quien hace las redadas donde esta V: en Dogtown no entra la NCPD, manda Barghest. Lo lee CET para
+    // elegir a quien allanan y los textos.
+    public func GetRaidForce() -> String {
+        return this.IsInDogtown() ? "Barghest" : "NCPD";
+    }
+
+    // Uno de los que hacen la redada (o la hicieron y se estan yendo). Lo usa GRTraits.HitSource: son
+    // amistosos con V, pero sus golpes no son de V.
+    public func IsRaidForce(id: EntityID) -> Bool {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_raidForceIDs) {
+            if this.m_raidForceIDs[i] == id {
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+
+    // Soldados de Barghest para una redada en Dogtown: tantos como policias pidio CET (2 + rango), al
+    // azar entre los mismos 12 records que usan los escoltas de Barghest (modules/escorts.lua).
+    private func BarghestRaiders(policeRecords: String) -> String {
+        let pool: array<String> = [
+            "Character.bou_kurtz_grunt1_ranged1_handgun_ma",
+            "Character.bou_kurtz_grunt1_ranged1_handgun_wa",
+            "Character.bou_kurtz_grunt1_ranged1_saratoga_ma",
+            "Character.bou_kurtz_grunt1_ranged1_saratoga_wa",
+            "Character.high_kurtz_grunt1_ranged1_handgun_ma",
+            "Character.high_kurtz_grunt1_ranged1_handgun_wa",
+            "Character.high_kurtz_grunt1_ranged1_saratoga_ma",
+            "Character.high_kurtz_grunt1_ranged1_saratoga_wa",
+            "Character.combat_zone_gate_kurtz_grunt1_ranged1_handgun_ma",
+            "Character.combat_zone_gate_kurtz_grunt1_ranged1_handgun_wa",
+            "Character.combat_zone_gate_kurtz_grunt1_ranged1_saratoga_ma",
+            "Character.combat_zone_gate_kurtz_grunt1_ranged1_saratoga_wa"
+        ];
+        let count: Int32 = 3;
+        if StrLen(policeRecords) > 0 {
+            let asked: array<String> = StrSplit(policeRecords, ",");
+            count = ArraySize(asked);
+        }
+        let result: String = "";
+        let i: Int32 = 0;
+        while i < count {
+            let pick: Int32 = Min(RandRange(0, ArraySize(pool)), ArraySize(pool) - 1);
+            result += (i > 0 ? "," : "") + pool[pick];
+            i += 1;
+        }
+        return result;
+    }
+
+    private func IsBarghestRecord(recordID: String) -> Bool {
+        let record: wref<Character_Record> = TweakDBInterface.GetCharacterRecord(TDBID.Create(recordID));
+        return IsDefined(record) && IsDefined(record.Affiliation()) && Equals(record.Affiliation().Type(), gamedataAffiliation.Barghest);
+    }
+
+    // policeRecords lo manda CET (policias de la NCPD). En Dogtown se ignora y vienen soldados de Barghest:
+    // mismo numero, mismo bando 1 (amistosos con V, hostiles al grupo del Nemesis).
     public func StartRaid(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, speaker: String, policeRecords: String) -> Bool {
         if StrLen(this.GetAmbushBlocker()) > 0 || this.IsNemesisSpawned(nemesisId) {
             return false;
+        }
+        let force: String = this.GetRaidForce();
+        let label: String = "Redada " + force;
+        if this.IsMachineNemesis(nemesisId, recordID, label) {
+            return false;
+        }
+        let raiders: String = policeRecords;
+        if Equals(force, "Barghest") {
+            // Barghest no allana a los suyos (CET ya elige a un Nemesis de otra banda).
+            if this.IsBarghestRecord(recordID) {
+                GRLog(label + ": Nemesis #" + IntToString(nemesisId) + " es de Barghest, no se genera");
+                return false;
+            }
+            raiders = this.BarghestRaiders(policeRecords);
         }
         // A ~55 m (minimo ~40) y fuera de la vista de V: se oye el tiroteo y V se acerca, no aparece de la nada.
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
@@ -1123,6 +1284,7 @@ public class GRSpawner extends ScriptableSystem {
                 this.m_policeImmune = true;
                 this.m_immuneRaidEnd = 0.0;
                 this.m_raidPoliceOnV = false;
+                ArrayClear(this.m_raidForceIDs);
                 this.m_spawnSide = 0;
                 let facing: Quaternion = EulerAngles.ToQuat(Vector4.ToRotation(posB - posA));
                 if !this.SpawnAt(nemesisId, recordID, appearance, posA, facing, "", speaker) {
@@ -1131,7 +1293,7 @@ public class GRSpawner extends ScriptableSystem {
                 }
                 this.SpawnRaidSide(escortRecords, posA, posB);
                 this.m_spawnSide = 1;
-                this.SpawnRaidSide(policeRecords, posB, posA);
+                this.SpawnRaidSide(raiders, posB, posA);
                 this.m_spawnSide = 0;
 
                 this.m_ambushActive = true;
@@ -1139,11 +1301,12 @@ public class GRSpawner extends ScriptableSystem {
                 this.m_ambushStart = this.Now();
                 this.m_ambushCalmSince = 0.0;
                 this.m_stuckChecked = false;
-                GRLog("Redada NCPD: Nemesis #" + IntToString(nemesisId) + ", " + IntToString(ArraySize(this.m_entityIDs)) + " NPC");
+                GRLog(label + ": Nemesis #" + IntToString(nemesisId) + ", " + IntToString(ArraySize(this.m_entityIDs)) + " NPC ("
+                    + IntToString(ArraySize(this.m_raidForceIDs)) + " de " + force + ")");
                 return true;
             }
         }
-        GRLog("Redada NCPD: sin sitio cerca de V");
+        GRLog(label + ": sin sitio cerca de V");
         return false;
     }
 

@@ -644,8 +644,18 @@ local function tryRaid(force)
     local warSys = getSystem("GangRetaliation.GRWar")
     local districtGangs = (warSys and War.districtGangs(campaign, warSys:GetCurrentDistrict()))
         or Ambush.parseGangs(spawner:GetDistrictGangs())
-    local n = Ambush.pick(campaign.nemeses, districtGangs, false)
-    if not n then return "no living Nemesis" end
+    -- En Dogtown la redada es de Barghest (GRSpawner.GetRaidForce) y va contra forasteros: solo Nemesis
+    -- de otras bandas. Si no hay ninguno, no hay redada.
+    local raidForce = spawner:GetRaidForce()
+    local pool = campaign.nemeses
+    if raidForce == "Barghest" then
+        pool, districtGangs = {}, {}
+        for _, c in ipairs(campaign.nemeses) do
+            if c.gang ~= "Barghest" then table.insert(pool, c) end
+        end
+    end
+    local n = Ambush.pick(pool, districtGangs, false)
+    if not n then return raidForce == "Barghest" and "no outsider Nemesis for a Barghest raid" or "no living Nemesis" end
 
     pushTraits(n)
     if not spawner:StartRaid(n.id, n.recordID, n.appearance or "", Ambush.escorts(n, settings.ambushMaxEscorts), fullName(n), Ambush.police(n)) then
@@ -653,8 +663,13 @@ local function tryRaid(force)
     end
     GR.lastRaid = os.time()
     GR.raidId = n.id
-    notify(string.format(text("GR-MsgRaid", "The NCPD is raiding %s nearby!"), labelOf(n)))
-    return "raid #" .. n.id
+    GR.raidForce = raidForce
+    if raidForce == "Barghest" then
+        notify(string.format(text("GR-MsgRaidBarghest", "Barghest is raiding %s nearby!"), labelOf(n)))
+    else
+        notify(string.format(text("GR-MsgRaid", "The NCPD is raiding %s nearby!"), labelOf(n)))
+    end
+    return "raid #" .. n.id .. " (" .. raidForce .. ")"
 end
 
 local raidBounty = { 1000, 2500, 5000 }
@@ -664,8 +679,11 @@ local function checkRaid()
     if not GR.raidId or not spawner or spawner:IsRaidActive() then return end
     local n = findNemesis(GR.raidId)
     GR.raidId = nil
+    -- Barghest no paga recompensa por ayudar en su redada.
+    local barghest = GR.raidForce == "Barghest"
+    GR.raidForce = nil
     local outcome = spawner:TakeRaidOutcome()
-    if outcome == "helpedPolice" or outcome == "helpedPoliceHurtCops" then
+    if not barghest and (outcome == "helpedPolice" or outcome == "helpedPoliceHurtCops") then
         local bounty = raidBounty[(n and n.rank) or 1] or raidBounty[1]
         local deducted = outcome == "helpedPoliceHurtCops"
         local amount = deducted and math.floor(bounty / 2) or bounty
@@ -684,7 +702,11 @@ local function checkRaid()
     if n and n.status ~= "dead" then
         Hierarchy.addRenown(n, 2)
         Store.dirty = true
-        notify(string.format(text("GR-MsgPoliceEscape", "Rumor: %s shot their way out of an NCPD raid."), labelOf(n)))
+        if barghest then
+            notify(string.format(text("GR-MsgBarghestEscape", "Rumor: %s shot their way out of a Barghest raid."), labelOf(n)))
+        else
+            notify(string.format(text("GR-MsgPoliceEscape", "Rumor: %s shot their way out of an NCPD raid."), labelOf(n)))
+        end
     end
 end
 
@@ -866,6 +888,21 @@ local function processReveals()
     sys:ClearReveals()
 end
 
+-- Hasta 1.3.x un drone o un mech podia volverse Nemesis. Al cargar la partida se borran de la lista (como
+-- el Jackie de Store.load): sin muerte, sin castigo a la banda y sin merito para V.
+local function purgeMachines()
+    local spawner = getSpawner()
+    local nemeses = Store.campaign(GR.campaignId).nemeses
+    for i = #nemeses, 1, -1 do
+        local n = nemeses[i]
+        if spawner and n.status ~= "dead" and type(n.recordID) == "string" and spawner:IsMachineRecordID(n.recordID) then
+            print(string.format("[GangRetaliation] Nemesis #%s (%s) borrado: su record es una maquina (%s)", tostring(n.id), tostring(n.gang), n.recordID))
+            table.remove(nemeses, i)
+            Store.dirty = true
+        end
+    end
+end
+
 local function refreshCampaign()
     if not Game.GetPlayer() then
         GR.campaignId = 0
@@ -948,6 +985,9 @@ local function update(delta)
     end
     if GR.hierarchyNow then
         GR.hierarchyNow = false
+        -- Una vez por partida cargada, ya pasada la pantalla de carga y antes de cubrir vacantes.
+        local okP, errP = pcall(purgeMachines)
+        if not okP then print("[GangRetaliation] Error al borrar Nemesis-maquina: " .. tostring(errP)) end
         local ok, err = prof("updateHierarchy", pcall, updateHierarchy)
         if not ok then print("[GangRetaliation] Error en jerarquia: " .. tostring(err)) end
     end

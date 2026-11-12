@@ -160,8 +160,12 @@ public class GRTraits extends ScriptableSystem {
         if IsDefined(record) && IsDefined(record.Affiliation()) && Equals(record.Affiliation().Type(), gamedataAffiliation.NCPD) {
             return "police";
         }
+        // Los soldados de Barghest de una redada en Dogtown son amistosos con V, pero no pelean por V:
+        // sus golpes cuentan como de su banda ("gang:Barghest"), no como de V.
+        let spawner: ref<GRSpawner> = GRSpawner.Get(instigator.GetGame());
+        let raidForce: Bool = IsDefined(spawner) && spawner.IsRaidForce(instigator.GetEntityID());
         let player: ref<GameObject> = GetPlayer(instigator.GetGame());
-        if IsDefined(player) && Equals(GameObject.GetAttitudeBetween(instigator, player), EAIAttitude.AIA_Friendly) {
+        if !raidForce && IsDefined(player) && Equals(GameObject.GetAttitudeBetween(instigator, player), EAIAttitude.AIA_Friendly) {
             return "v";
         }
         if !IsDefined(puppet) {
