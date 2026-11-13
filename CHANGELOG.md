@@ -11,12 +11,26 @@
   with guards around them (more for each living Lieutenant). Get close and they are at their posts.
   Kill them all and the stronghold falls and leaves the map. It comes back when the gang has
   Nemeses again.
+- **Unique Boss weapons.** Every gang has its own signature weapon, and each Boss carries a copy with
+  his name on it ("Joaquín's Overture"). It has an elemental bonus (electric, thermal or chemical,
+  tied to the Boss's traits) that grows each time the Boss escapes you. Kill the Boss and the weapon
+  is yours, scaled to V's level, and its elemental damage shows in the inventory tooltip. Scan a
+  Boss to see his weapon in his detail panel.
+- **ARSENAL view.** The NEMESIS screen has a third view (TAB): your Boss weapons, gang by gang, with
+  their icon, element, bonus and the Boss you took them from.
+- **Augment.** Fuse a copy into your gang weapon: the copy is destroyed, you choose which element
+  stays, the bonus becomes the higher one x1.10 (max 60%) and the weapon gains a level (I to V,
+  +5% damage each).
 
 #### Changed
 - **Barghest raids in Dogtown.** In Dogtown the NCPD does not raid: Barghest soldiers do. They hunt
   Nemeses of other gangs, with their own messages and no NCPD bounty SMS.
+- **Bosses no longer ambush V.** They have better things to do. You still meet them in gigs,
+  reinforcements, raids and their strongholds.
 
 #### Fixed
+- **Loading a save no longer starts a new campaign.** Sometimes the first load after launching the
+  game created a new, empty campaign instead of continuing yours. Your saved campaign was never lost.
 - **Drones and mechs no longer become Nemeses.** A drone, mech or robot that survived a fight could
   be promoted and later come back as a "Nemesis". Machines are now never promoted, and machine
   Nemeses saved by an older version are removed from the campaign when it loads.
@@ -32,12 +46,27 @@
   vivo, su guarida aparece en el mapa desde el principio: todos viven ahí, el Jefe en el centro, con
   guardias alrededor (más por cada Teniente vivo). Al acercarte están en sus puestos. Si los matás a
   todos, la guarida cae y sale del mapa. Vuelve cuando la banda tiene Némesis otra vez.
+- **Armas únicas de Jefe.** Cada banda tiene su arma propia y cada Jefe lleva una copia con su
+  nombre ("Overture de Joaquín"). Tiene un bono elemental (eléctrico, térmico o químico, según los
+  rasgos del Jefe) que sube cada vez que se te escapa. Si lo matás, el arma es tuya, al nivel de V.
+  Su daño elemental aparece en el tooltip del inventario. Escaneá a un Jefe para ver su arma en su
+  panel.
+- **Vista ARSENAL.** La pantalla NÉMESIS tiene una tercera vista (TAB): tus armas de Jefe, banda por
+  banda, con su ícono, elemento, bono y el Jefe al que se la sacaste.
+- **Aumento.** Fusioná una copia con el arma de tu banda: la copia se destruye, elegís qué elemento
+  queda, el bono pasa a ser el más alto x1,10 (tope 60 %) y el arma sube un nivel (de I a V, +5 % de
+  daño cada uno).
 
 #### Cambiado
 - **Redadas de Barghest en Dogtown.** En Dogtown no hace redadas la NCPD sino soldados de Barghest.
   Cazan Némesis de otras bandas, con avisos propios y sin el SMS de recompensa de la NCPD.
+- **Los Jefes ya no emboscan a V.** Tienen mejores cosas que hacer. Los seguís cruzando en gigs,
+  refuerzos, redadas y en sus guaridas.
 
 #### Arreglado
+- **Cargar una partida ya no empieza una campaña nueva.** A veces la primera carga después de abrir
+  el juego creaba una campaña nueva y vacía en vez de seguir la tuya. La campaña guardada nunca se
+  perdía.
 - **Los drones y los mechs ya no se vuelven Némesis.** Un drone, mech o robot que sobrevivía a una
   pelea podía ascender y volver después como "Némesis". Ahora las máquinas nunca ascienden, y los
   Némesis-máquina guardados por una versión anterior se borran de la campaña al cargarla.

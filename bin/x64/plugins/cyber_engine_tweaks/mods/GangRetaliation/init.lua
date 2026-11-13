@@ -203,6 +203,28 @@ local function processPending()
     det:ClearPending()
 end
 
+-- Arma de Jefe (GRRewards): una vez por Jefe, salvo force (boton de desarrollo). Devuelve el nombre del arma o "".
+local function giveBossWeapon(n, force)
+    local rewards = getSystem("GangRetaliation.GRRewards")
+    if not rewards or not n.gang then return "" end
+    local escapes = (n.escapes or 0) + ((n.origin == "escaped" or n.origin == "fled") and 1 or 0)
+    rewards:AddName(n.id, Names.display(n, lang()))
+    local weapon = rewards:GiveBossWeapon(n.id, n.gang, Traits.csv(n), escapes, force)
+    if weapon and weapon ~= "" then notify(string.format(text("GR-MsgBossWeapon", "You took %s."), weapon)) end
+    return weapon or ""
+end
+
+-- Los nombres de las armas de Jefe no se guardan en la partida: GRRewards los arma con el nombre del Jefe.
+local function pushRewardNames()
+    local rewards = getSystem("GangRetaliation.GRRewards")
+    if not rewards then return end
+    rewards:ClearNames()
+    for _, n in ipairs(Store.campaign(GR.campaignId).nemeses) do
+        -- HasGiven: un Jefe que volvio de la muerte puede haber bajado de rango y su arma sigue con V.
+        if (n.rank or 1) >= Hierarchy.BOSS or rewards:HasGiven(n.id) then rewards:AddName(n.id, Names.display(n, lang())) end
+    end
+end
+
 local function processDeaths()
     local spawner = getSpawner()
     if not spawner then return end
@@ -243,6 +265,10 @@ local function processDeaths()
                 notify(string.format(text("GR-MsgNemesisDead", "%s is dead... for now."), labelOf(n)))
             end
             Hierarchy.onDeath(Store.ensureCampaign(GR.campaignId), n, gameDay())
+            if (n.rank or 1) == Hierarchy.BOSS and n.diedBy == "v" then
+                local okW, errW = pcall(giveBossWeapon, n, false)
+                if not okW then print("[GangRetaliation] Error en arma de Jefe: " .. tostring(errW)) end
+            end
             if (n.rank or 1) == Hierarchy.BOSS then
                 notify(string.format(text("GR-MsgBossDown", "The %s lost their boss. Someone will want the throne..."), Names.gangLabel(n.gang)))
             end
@@ -310,7 +336,7 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
         or Ambush.parseGangs(spawner:GetDistrictGangs())
     -- Los que acaban de escapar esperan (Ambush.escapeRestDays); una emboscada forzada no espera.
     local today = gameDay()
-    local n, resting = Ambush.pick(campaign.nemeses, districtGangs, not force, not force and today or nil)
+    local n, resting = Ambush.pick(campaign.nemeses, districtGangs, not force, not force and today or nil, true)
     for _, r in ipairs(resting) do
         debugLog(string.format("Emboscada: %s descartado, escapo hace %.2f dias (espera %s)", labelOf(r), today - r.escapedDay, tostring(Ambush.escapeRestDays)))
     end
@@ -933,6 +959,7 @@ local function pushMenu()
             Ambush.hasMetV(n), n.renown or 0)
         sys:AddDetail(menuTraits(n), renownHint(n), text("GR-Origin-" .. (n.origin or "escaped"), n.origin or ""), cause)
         sys:AddStats(n.encounters or 1, escapes, n.ambushes or 0, n.gigs or 0)
+        sys:AddIds(n.id, Traits.csv(n))
     end
     for _, gang in ipairs(Hierarchy.knownGangs(campaign)) do
         sys:SetVacancy(gang, vacancyNote(campaign, gang, 3), vacancyNote(campaign, gang, 2))
@@ -996,11 +1023,10 @@ local function refreshCampaign()
         return
     end
 
+    -- El id lo genera solo redscript (OnRestored / OnPlayerAttach). Si aun es 0, esperar:
+    -- generarlo aca durante la carga le ganaba al id guardado y creaba una campana nueva.
     local id = sys:GetCampaignId()
-    if id == 0 then
-        sys:EnsureCampaignId()
-        id = sys:GetCampaignId()
-    end
+    if id == 0 then GR.campaignId = 0 return end
     local token = sys:GetSessionToken()
     if id ~= 0 and (id ~= GR.campaignId or token ~= GR.sessionToken) then
         GR.campaignId = id
@@ -1010,6 +1036,7 @@ local function refreshCampaign()
         GR.encounterId = nil
         -- Sesion nueva = GRStronghold nuevo y vacio: volver a pasarle los miembros.
         GR.strongholdVersion = nil
+        GR.rewardsVersion = nil
         debugLog("Campana activa: " .. tostring(id))
 
         -- En la pantalla de carga el juego aun no esta listo: no tocar nada hasta que pase.
@@ -1095,6 +1122,12 @@ local function update(delta)
             GR.strongholdCampaign = GR.campaignId
             local okS, errS = prof("pushStronghold", pcall, pushStronghold)
             if not okS then print("[GangRetaliation] Error en guarida: " .. tostring(errS)) end
+        end
+        if Store.version ~= GR.rewardsVersion or GR.campaignId ~= GR.rewardsCampaign then
+            GR.rewardsVersion = Store.version
+            GR.rewardsCampaign = GR.campaignId
+            local okR, errR = prof("pushRewardNames", pcall, pushRewardNames)
+            if not okR then print("[GangRetaliation] Error en nombres de armas: " .. tostring(errR)) end
         end
         local stronghold = getSystem("GangRetaliation.GRStronghold")
         if stronghold then prof("Stronghold:Tick", function() stronghold:Tick() end) end
@@ -1580,6 +1613,30 @@ registerForEvent("onDraw", function()
                 for _, state in pairs(Store.ensureCampaign(GR.campaignId).hierarchy or {}) do state.lastPoliceDay = nil end
                 local ok, err = pcall(updateHierarchy, nil, 100)
                 GR.lastAction = ok and "NCPD clash" or tostring(err)
+            end
+            local rewards = getSystem("GangRetaliation.GRRewards")
+            if rewards then
+                if ImGui.Button("Debug: boss weapon (first Boss)") then
+                    GR.lastAction = "no living Boss"
+                    for _, n in ipairs(Store.campaign(GR.campaignId).nemeses) do
+                        if (n.rank or 1) == Hierarchy.BOSS and n.status ~= "dead" then
+                            pushRewardNames()
+                            local okW, resW = pcall(giveBossWeapon, n, true)
+                            GR.lastAction = "boss weapon: " .. tostring(resW)
+                            break
+                        end
+                    end
+                end
+                ImGui.SameLine()
+                if ImGui.Button("Debug: report unique weapons") then
+                    rewards:DebugReport()
+                    GR.lastAction = "unique weapons reported (see log)"
+                end
+                ImGui.SameLine()
+                if ImGui.Button("Debug: remove test weapon") then
+                    rewards:DebugRemoveLast()
+                    GR.lastAction = "test weapon removal tried (see log)"
+                end
             end
             if ImGui.Button("Debug: NCPD raid now") then
                 local ok, res = pcall(tryRaid, true)

@@ -1,4 +1,5 @@
 local Escorts = require("modules/escorts")
+local Hierarchy = require("modules/hierarchy")
 
 local Ambush = {}
 
@@ -19,10 +20,12 @@ Ambush.escapeRestDays = 1
 
 -- today (dia de juego) solo lo pasan las emboscadas: deja fuera a los que escaparon hace menos de
 -- escapeRestDays y los devuelve como segundo valor. Sin escapedDay (partidas viejas) no hay espera.
-function Ambush.pick(nemeses, districtGangs, metOnly, today)
+-- noBoss (solo emboscadas): los Jefes no salen a cazar a V, tienen mejores cosas que hacer.
+function Ambush.pick(nemeses, districtGangs, metOnly, today, noBoss)
     local pool, total, resting = {}, 0, {}
     for _, n in ipairs(nemeses) do
-        if n.status ~= "dead" and not n.jailedUntil and n.recordID and n.id and (not metOnly or Ambush.hasMetV(n)) then
+        if n.status ~= "dead" and not n.jailedUntil and n.recordID and n.id and (not metOnly or Ambush.hasMetV(n))
+            and not (noBoss and n.rank == Hierarchy.BOSS) then
             local since = today and n.escapedDay and (today - n.escapedDay)
             -- since < 0: se cargo una partida anterior al escape; no se lo deja esperando de mas.
             if since and since >= 0 and since < Ambush.escapeRestDays then
