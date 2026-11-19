@@ -22,13 +22,14 @@ HERE = Path(__file__).resolve().parent
 MOD = HERE.parent                                   # Working/GangRetaliation
 ROOT = MOD.parent.parent                            # CYBERPUNK MODS
 NAME = "GangRetaliation"
-VERSION = "1.4.8"
+VERSION = "1.5.0"
 ZIP_NAME = f"Gang Retaliation V{VERSION}.zip"
 
 GAME = Path(r"H:\SteamLibrary\steamapps\common\Cyberpunk 2077")
 SCC = GAME / "engine" / "tools" / "scc.exe"
 SHIPPED_TOP = ["archive", "bin", "r6"]              # top-level folders that go in the zip
 SCRIPTS = Path("r6/scripts") / NAME
+INIT_LUA = Path("bin/x64/plugins/cyber_engine_tweaks/mods") / NAME / "init.lua"
 
 
 def fail(msg):
@@ -72,12 +73,30 @@ def compile_check():
 
 
 def check_version():
-    for rel, pattern in [(Path("CHANGELOG.md"), rf"^## {re.escape(VERSION)}\b"),
+    for rel, pattern in [(Path("CHANGELOG.md"), rf"^## \[?{re.escape(VERSION)}\]?\b"),
                          (Path("README.md"), rf"Current version: {re.escape(VERSION)}\b")]:
         text = (MOD / rel).read_text(encoding="utf-8")
         if not re.search(pattern, text, re.M):
             fail(f"version check failed for {rel} (expected {pattern})")
     print(f"== version {VERSION} consistent")
+
+
+def transform_init_lua(text: str) -> str:
+    # Never ship with dev mode on - it turns on the FPS/perf overlay, benchmark tooling, the fly hotkey,
+    # etc., none of which belongs in a build players run. Mirrors the toggle NovaAntonsito's own release
+    # build makes (found 2026-11-19 by diffing the packaged 1.4.9 Nexus zip against the exact git commit
+    # it was built from - see NOTES.md section 2).
+    replaced, count = re.subn(r"dev = true,\s*--\s*GR_DEV_FLAG", "dev = false,", text)
+    if count != 1:
+        fail(f"expected exactly one GR_DEV_FLAG line in init.lua, found {count}")
+    return replaced
+
+
+def shipped_bytes(rel: Path) -> bytes:
+    data = (MOD / rel).read_bytes()
+    if rel == INIT_LUA:
+        data = transform_init_lua(data.decode("utf-8")).encode("utf-8")
+    return data
 
 
 def warn_if_installed_differs():
@@ -89,7 +108,7 @@ def warn_if_installed_differs():
 
 def release_notes():
     text = (MOD / "CHANGELOG.md").read_text(encoding="utf-8")
-    m = re.search(rf"^## {re.escape(VERSION)}\b.*?(?=^## |\Z)", text, re.M | re.S)
+    m = re.search(rf"^## \[?{re.escape(VERSION)}\]?\b.*?(?=^## |\Z)", text, re.M | re.S)
     return m.group(0).rstrip() + "\n"
 
 
@@ -107,13 +126,13 @@ def main():
     zip_path = stage / ZIP_NAME
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for rel in files:
-            z.write(MOD / rel, rel.as_posix())
+            z.writestr(rel.as_posix(), shipped_bytes(rel))
 
     out.mkdir(parents=True, exist_ok=True)
     for rel in files:                                   # copy file by file; never delete anything there
         target = out / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(MOD / rel, target)
+        target.write_bytes(shipped_bytes(rel))
     shutil.copy2(zip_path, out / ZIP_NAME)
     (out / "RELEASE_NOTES.md").write_text(release_notes(), encoding="utf-8")
 

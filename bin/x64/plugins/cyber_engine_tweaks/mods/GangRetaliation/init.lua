@@ -892,8 +892,9 @@ end
 
 local function menuTraits(n)
     local lines = {}
+    local dead = n.status == "dead"
     for _, t in ipairs(n.traits or {}) do
-        if t.revealed then
+        if t.revealed or dead then
             local full = traitName(t.key)
             local sign = Traits.isWeakness(t.key) and "-" or "+"
             table.insert(lines, sign .. "|" .. text("GR-TraitShort-" .. t.key, full) .. "|" .. full)

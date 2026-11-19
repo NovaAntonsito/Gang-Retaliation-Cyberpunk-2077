@@ -50,7 +50,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetDebugLog", "Debug log");
         this.Text("GR-SetDebugLogDesc", "Writes detailed messages to the redscript log and the CET console.");
         this.Text("GR-CatAbout", "About");
-        this.Text("GR-SetVersion", "Gang Retaliation v1.4.9");
+        this.Text("GR-SetVersion", "Gang Retaliation v1.5.0");
         this.Text("GR-SetVersionDesc", "Informational only. Toggling this has no effect.");
         this.Text("GR-CatHud", "HUD");
         this.Text("GR-SetNameplateScale", "Enemy health bar size");
@@ -277,9 +277,10 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-MenuFallenShort", "FALLEN");
         this.Text("GR-MenuKnowYouShort", "KNOW YOU");
         this.Text("GR-MenuKnown", "KNOWS YOU");
+        this.Text("GR-MenuKnewYou", "KNEW YOU");
         this.Text("GR-MenuUnknown", "NO CONTACT");
         this.Text("GR-MenuKnownNote", "They have crossed paths with you. They can ambush you.");
-        this.Text("GR-MenuUnknownNote", "They have not met V yet. They can show up as backup in a gig against their gang.");
+        this.Text("GR-MenuUnknownNote", "They have not met you yet. They can show up as backup in a gig against their gang.");
         this.Text("GR-MenuRenown", "Renown");
         this.Text("GR-MenuRenownTop", "At the top. They only fall if you kill them or someone overthrows them.");
         this.Text("GR-MenuRenownReady", "Ready to become %s as soon as a spot opens.");
@@ -469,7 +470,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetDebugLog", "Log de depuración");
         this.Text("GR-SetDebugLogDesc", "Escribe mensajes detallados en el log de redscript y en la consola de CET.");
         this.Text("GR-CatAbout", "Acerca de");
-        this.Text("GR-SetVersion", "Gang Retaliation v1.4.9");
+        this.Text("GR-SetVersion", "Gang Retaliation v1.5.0");
         this.Text("GR-SetVersionDesc", "Solo informativo. Activarlo o desactivarlo no hace nada.");
         this.Text("GR-CatHud", "HUD");
         this.Text("GR-SetNameplateScale", "Tamaño de la barra de vida enemiga");
@@ -696,9 +697,10 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-MenuFallenShort", "CAIDOS");
         this.Text("GR-MenuKnowYouShort", "TE CONOCEN");
         this.Text("GR-MenuKnown", "TE CONOCE");
+        this.Text("GR-MenuKnewYou", "TE CONOCÍA");
         this.Text("GR-MenuUnknown", "SIN CONTACTO");
         this.Text("GR-MenuKnownNote", "Ya se ha cruzado contigo. Puede tenderte una emboscada.");
-        this.Text("GR-MenuUnknownNote", "Todavía no se ha cruzado con V. Puede aparecer como refuerzo en un gig contra su banda.");
+        this.Text("GR-MenuUnknownNote", "Todavía no se ha cruzado contigo. Puede aparecer como refuerzo en un gig contra su banda.");
         this.Text("GR-MenuRenown", "Renombre");
         this.Text("GR-MenuRenownTop", "En la cima. Solo cae si lo matas o lo derrocan.");
         this.Text("GR-MenuRenownReady", "Listo para ascender a %s en cuanto quede un puesto libre.");

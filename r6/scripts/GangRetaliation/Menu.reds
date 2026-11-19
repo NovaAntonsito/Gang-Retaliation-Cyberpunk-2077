@@ -269,7 +269,15 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     private let m_pathStart: array<Int32>;
     private let m_pathColor: array<HDRColor>;
     private let m_detail: wref<inkCanvas>;
+    private let m_detailHeader: wref<inkVerticalPanel>;
     private let m_detailContent: wref<inkVerticalPanel>;
+    private let m_detailGrip: wref<inkRectangle>;
+    private let m_detailDrag: wref<inkSliderController>;
+    private let m_detailScroller: wref<inkScrollController>;
+    private let m_fallenGrip: wref<inkRectangle>;
+    private let m_fallenDrag: wref<inkSliderController>;
+    private let m_fallenScroller: wref<inkScrollController>;
+    private let m_fallenSyncing: Bool;
     private let m_gangTitle: wref<inkText>;
     private let m_gangCount: wref<inkText>;
     private let m_marks: wref<inkHorizontalPanel>;
@@ -277,6 +285,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     private let m_buttonHints: wref<ButtonHints>;
     private let m_cards: array<ref<GRMenuEntry>>;
     private let m_cardFrames: array<wref<inkImage>>;
+    private let m_cardSelFrames: array<wref<inkImage>>;
+    private let m_fallenCards: array<ref<GRMenuEntry>>;
+    private let m_fallenBorders: array<wref<GRBorder>>;
+    private let m_fallenExpanded: Bool;
     private let m_tabTexts: array<wref<inkText>>;
     private let m_tabBars: array<wref<inkRectangle>>;
     private let m_tabThreats: array<wref<inkRectangle>>;
@@ -512,6 +524,62 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return rect;
     }
 
+    // A vertical draggable scrollbar track + grip, line-for-line the same construction as Gang Retaliation
+    // History's own working vertical bar (GangRetaliationHistory/History.reds:NewBar, sideways=false,
+    // confirmed in game): a thin AddFill track *as a child of `bar`* behind a cyan-while-held grip, with
+    // the inkSliderController handed to the inkScrollController via VerticalScrollBarRef for fully
+    // automatic two-way sync - no manual OnScrollChanged/OnSliderValueChanged callbacks. Earlier sessions
+    // tried this exact shape once before and saw it get worse, but that attempt still had the old manual
+    // sync callbacks (OnGRDetailScrolled/OnGRDetailDragged) registered on top of it - two sync mechanisms
+    // fighting each other, not a real difference from History. Those callbacks are gone now.
+    private func NewBar(parent: ref<inkCompoundWidget>, x: Float, y: Float, w: Float, h: Float) -> ref<inkCanvas> {
+        let bar: ref<inkCanvas> = new inkCanvas();
+        bar.SetAnchor(inkEAnchor.TopLeft);
+        bar.SetMargin(new inkMargin(x, y, 0.0, 0.0));
+        bar.SetSize(new Vector2(w, h));
+        bar.SetInteractive(true);
+        bar.Reparent(parent);
+
+        let track: ref<inkCanvas> = new inkCanvas();
+        track.SetAnchor(inkEAnchor.Fill);
+        track.Reparent(bar);
+        this.AddFill(track, this.DarkRed(), 0.5);
+
+        let grip: ref<inkRectangle> = new inkRectangle();
+        grip.SetAnchor(inkEAnchor.TopFillHorizontaly);
+        grip.SetSize(new Vector2(w, 120.0));
+        grip.SetTintColor(this.Red());
+        grip.SetInteractive(true);
+        grip.Reparent(bar);
+        grip.RegisterToCallback(n"OnPress", this, n"OnGRDetailGripPress");
+        grip.RegisterToCallback(n"OnRelease", this, n"OnGRDetailGripRelease");
+        this.m_detailGrip = grip;
+
+        let drag: ref<inkSliderController> = new inkSliderController();
+        drag.slidingAreaRef = inkWidgetRef.Create(bar);
+        drag.handleRef = inkWidgetRef.Create(grip);
+        drag.direction = inkESliderDirection.Vertical;
+        drag.autoSizeHandle = true;
+        drag.Setup(0.0, 1.0, 0.0);
+        bar.AttachController(drag);
+        this.m_detailDrag = drag;
+        return bar;
+    }
+
+    protected cb func OnGRDetailGripPress(evt: ref<inkPointerEvent>) -> Bool {
+        if evt.IsAction(n"click") && IsDefined(this.m_detailGrip) {
+            this.m_detailGrip.SetTintColor(this.Cyan());
+        }
+        return false;
+    }
+
+    protected cb func OnGRDetailGripRelease(evt: ref<inkPointerEvent>) -> Bool {
+        if IsDefined(this.m_detailGrip) {
+            this.m_detailGrip.SetTintColor(this.Red());
+        }
+        return false;
+    }
+
     private func AddBorder(parent: ref<inkCompoundWidget>, color: HDRColor, thickness: Float, opacity: Float) {
         let border: ref<GRBorder> = new GRBorder();
         border.SetAnchor(inkEAnchor.Fill);
@@ -631,10 +699,69 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.AddFill(detail, this.Panel(), 0.95);
         this.AddBorder(detail, this.Red(), 2.0, 0.45);
 
+        // Fixed, non-scrolling header: rank/gang line, name, title. Everything below it (contact tag
+        // through Origin) scrolls instead of spilling past the card's bottom edge - contentHeight is a
+        // fixed estimate of the header's own height (rank line + a single-line name + title; names in
+        // the generator stay well under half this column's width, so 2-line wrapping isn't a real
+        // concern here). A thin rule marks the header/scroll boundary, with an equal gap above and below
+        // it so it sits centered in the space rather than hugging either side.
+        let header: ref<inkVerticalPanel> = new inkVerticalPanel();
+        header.SetAnchor(inkEAnchor.TopLeft);
+        header.SetMargin(new inkMargin(56.0, 52.0, 0.0, 0.0));
+        header.Reparent(detail);
+        this.m_detailHeader = header;
+
+        let contentHeight: Float = 162.0;
+        let gap: Float = 20.0;
+        let dividerY: Float = 52.0 + contentHeight + gap;
+        let headerHeight: Float = dividerY + 2.0 + gap - 52.0;
+        let divider: ref<inkRectangle> = this.NewRect(888.0, 2.0, this.Dim(), 1.0);
+        divider.SetAnchor(inkEAnchor.TopLeft);
+        divider.SetMargin(new inkMargin(56.0, dividerY, 0.0, 0.0));
+        divider.Reparent(detail);
+        // host is wider than the 888px text column on purpose, reaching into the card's existing 56px
+        // right inset - scroll reserves the rightmost 40px of that for the bar (same split
+        // GangRetaliationHistory/History.reds's own working vertical bar uses), and every text widget
+        // still wraps to its own explicit 888px width regardless of host's width. The bar itself is a
+        // CHILD of host, not a sibling positioned on `detail` - that was the actual bug in the first two
+        // attempts here: parented outside host, the slider's handle drifted out of the track while
+        // scrolling/dragging even with autoSizeHandle corrected, and matching History's structure exactly
+        // (bar inside the same canvas the scroll area lives in) is what fixed it.
+        let hostHeight: Float = 1520.0 - 52.0 - headerHeight - 52.0;
+        let host: ref<inkCanvas> = new inkCanvas();
+        host.SetAnchor(inkEAnchor.TopLeft);
+        host.SetMargin(new inkMargin(56.0, 52.0 + headerHeight, 0.0, 0.0));
+        host.SetSize(new Vector2(928.0, hostHeight));
+        host.SetInteractive(true);
+        host.Reparent(detail);
+
+        let scroll: ref<inkScrollArea> = new inkScrollArea();
+        scroll.SetAnchor(inkEAnchor.Fill);
+        scroll.SetMargin(new inkMargin(0.0, 0.0, 40.0, 0.0));
+        scroll.SetUseInternalMask(true);
+        scroll.SetConstrainContentPosition(true);
+        scroll.Reparent(host);
+
+        let bar: ref<inkCanvas> = this.NewBar(host, 914.0, 0.0, 10.0, hostHeight);
+
+        let scroller: ref<inkScrollController> = new inkScrollController();
+        scroller.ScrollArea = inkScrollAreaRef.Create(scroll);
+        scroller.VerticalScrollBarRef = inkWidgetRef.Create(bar);
+        scroller.direction = inkEScrollDirection.Vertical;
+        scroller.scrollSpeedMouse = 90.0;
+        scroller.scrollSpeedGamepad = 90.0;
+        // false, not true: with useGlobalInput on, this controller reacts to the mouse wheel no matter
+        // where the cursor is, so it and the fallen-row scroll below both moved together on any wheel
+        // input. false scopes wheel input to whichever scroll area is actually hovered, same as any
+        // normal scroll box.
+        scroller.useGlobalInput = false;
+        host.AttachController(scroller);
+        this.m_detailScroller = scroller;
+
         let content: ref<inkVerticalPanel> = new inkVerticalPanel();
-        content.SetAnchor(inkEAnchor.Fill);
-        content.SetMargin(new inkMargin(56.0, 52.0, 56.0, 52.0));
-        content.Reparent(detail);
+        content.SetFitToContent(true);
+        content.SetHAlign(inkEHorizontalAlign.Fill);
+        content.Reparent(scroll);
         this.m_detailContent = content;
     }
 
@@ -829,6 +956,20 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         card.RegisterToCallback(n"OnRelease", this, n"OnGRCardClick");
         card.Reparent(this.m_tree);
 
+        // Selection highlight: the same chamfered cell_fg shape as the normal frame below, just enlarged a
+        // few px past the card's own edges so it reads as a thicker cyan outline peeking out around it -
+        // a plain rectangular GRBorder was tried first and looked wrong against this card's cut corner.
+        let selFrame: ref<inkImage> = new inkImage();
+        selFrame.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+        selFrame.SetTexturePart(n"cell_fg");
+        selFrame.SetNineSliceScale(true);
+        selFrame.SetAnchor(inkEAnchor.Fill);
+        selFrame.SetMargin(new inkMargin(-3.0, -3.0, -3.0, -3.0));
+        selFrame.SetTintColor(this.Cyan());
+        selFrame.SetOpacity(selected ? 1.0 : 0.0);
+        selFrame.Reparent(card);
+        ArrayPush(this.m_cardSelFrames, selFrame);
+
         let bg: ref<inkImage> = new inkImage();
         bg.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
         bg.SetTexturePart(n"cell_bg");
@@ -972,16 +1113,25 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         block.SetMargin(new inkMargin(120.0, 1640.0, 0.0, 0.0));
         block.Reparent(this.m_tree);
 
+        // Line length tracks the collapsed row's actual width (same 420-card/160-"+N" step math as below)
+        // instead of a flat guess, so it reaches the end of the "+N" button when one is shown instead of
+        // falling short of it.
+        let collapsedCount: Int32 = Min(ArraySize(fallen), 5);
+        let hasMore: Bool = ArraySize(fallen) > collapsedCount;
+        let rowWidth: Float = ArraySize(fallen) == 0 ? 2200.0 : (Cast<Float>(collapsedCount) * 440.0 + (hasMore ? 180.0 : 0.0) - 20.0);
+
         let header: ref<inkHorizontalPanel> = new inkHorizontalPanel();
         header.Reparent(block);
         let label: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuFallen")), 34, this.Light(), n"Medium");
         label.SetVAlign(inkEVerticalAlign.Center);
         label.Reparent(header);
-        let line: ref<inkRectangle> = this.NewRect(2200.0, 2.0, this.Dim(), 1.0);
+        let line: ref<inkRectangle> = this.NewRect(rowWidth, 2.0, this.Dim(), 1.0);
         line.SetVAlign(inkEVerticalAlign.Center);
         line.SetMargin(new inkMargin(28.0, 0.0, 0.0, 0.0));
         line.Reparent(header);
 
+        ArrayClear(this.m_fallenCards);
+        ArrayClear(this.m_fallenBorders);
         if ArraySize(fallen) == 0 {
             let none: ref<inkText> = this.NewText(this.T("GR-MenuNoFallen"), 34, this.Light(), n"Regular");
             none.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
@@ -989,41 +1139,262 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             return;
         }
 
-        let row: ref<inkHorizontalPanel> = new inkHorizontalPanel();
-        row.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
-        row.Reparent(block);
-        let shown: Int32 = Min(ArraySize(fallen), 5);
+        let expanded: Bool = this.m_fallenExpanded && hasMore;
+
+        if !expanded {
+            let row: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+            row.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
+            row.Reparent(block);
+            let i: Int32 = 0;
+            while i < collapsedCount {
+                this.AddFallenCard(row, fallen[i]);
+                i += 1;
+            }
+            if ArraySize(fallen) > collapsedCount {
+                this.AddFallenActionCard(row, "+" + IntToString(ArraySize(fallen) - collapsedCount), 40);
+            }
+            return;
+        }
+
+        // Expanded: every fallen nemesis, in a horizontally scrollable row, ending with a card to collapse
+        // back. The scrollbar is always built, but only actually does anything once the row is wider than
+        // the host - inkScrollArea clamps to nothing to scroll otherwise, so this covers "a scrollbar if
+        // needed" without a separate branch. Card height is 190 (AddFallenCard); the scroll area is given
+        // that much room plus a clear 20px gap before the bar sits below it, instead of right against it.
+        let cardH: Float = 190.0;
+        let barGap: Float = 20.0;
+        let barH: Float = 8.0;
+        let host: ref<inkCanvas> = new inkCanvas();
+        host.SetAnchor(inkEAnchor.TopLeft);
+        host.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
+        host.SetSize(new Vector2(2560.0, cardH + barGap + barH));
+        host.SetInteractive(true);
+        host.Reparent(block);
+
+        let scroll: ref<inkScrollArea> = new inkScrollArea();
+        scroll.SetAnchor(inkEAnchor.TopLeft);
+        scroll.SetSize(new Vector2(2560.0, cardH));
+        scroll.SetUseInternalMask(true);
+        scroll.SetConstrainContentPosition(true);
+        scroll.Reparent(host);
+
+        let bar: ref<inkCanvas> = this.NewHBar(host, 0.0, cardH + barGap, 2560.0, barH);
+        bar.RegisterToCallback(n"OnSliderValueChanged", this, n"OnGRFallenDragged");
+        scroll.RegisterToCallback(n"OnScrollChanged", this, n"OnGRFallenScrolled");
+
+        let scroller: ref<inkScrollController> = new inkScrollController();
+        scroller.ScrollArea = inkScrollAreaRef.Create(scroll);
+        scroller.direction = inkEScrollDirection.Horizontal;
+        scroller.scrollSpeedMouse = 75.0;
+        scroller.scrollSpeedGamepad = 75.0;
+        scroller.useGlobalInput = false;  // see the detail panel's scroller above - scope wheel to hover
+        host.AttachController(scroller);
+        this.m_fallenScroller = scroller;
+
+        let scrollRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        scrollRow.SetFitToContent(true);
+        scrollRow.Reparent(scroll);
+        let j: Int32 = 0;
+        while j < ArraySize(fallen) {
+            this.AddFallenCard(scrollRow, fallen[j]);
+            j += 1;
+        }
+        this.AddFallenActionCard(scrollRow, "<", 48);
+    }
+
+    // A bordered/filled card matching AddFallenCard's look (so it reads as another button in the row, not
+    // plain text) but narrower, holding just centered text - used for both the "+N" expand button and the
+    // "<" collapse button at the end of the expanded row.
+    private func AddFallenActionCard(parent: ref<inkCompoundWidget>, label: String, size: Int32) {
+        let card: ref<inkCanvas> = new inkCanvas();
+        card.SetSize(new Vector2(160.0, 190.0));
+        card.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+        card.SetInteractive(true);
+        card.RegisterToCallback(n"OnRelease", this, n"OnGRFallenMoreClick");
+        card.Reparent(parent);
+        this.AddFill(card, this.Panel(), 0.95);
+        this.AddBorder(card, this.Dim(), 2.0, 1.0);
+
+        let text: ref<inkText> = this.NewText(label, size, this.Grey(), n"Bold");
+        text.SetAnchor(inkEAnchor.Centered);
+        text.SetAnchorPoint(new Vector2(0.5, 0.5));
+        text.Reparent(card);
+    }
+
+    // One fallen-nemesis card, shared by the collapsed row and the expanded scrollable row. Clicking it
+    // opens the same side detail panel a living nemesis card does (FillDetail/OnGRCardClick's pattern),
+    // resolved through m_fallenCards by name instead of m_cards so the two click handlers never collide.
+    private func AddFallenCard(parent: ref<inkCompoundWidget>, entry: ref<GRMenuEntry>) {
+        let index: Int32 = ArraySize(this.m_fallenCards);
+        ArrayPush(this.m_fallenCards, entry);
+
+        let card: ref<inkCanvas> = new inkCanvas();
+        card.SetName(StringToName("gr_fallen_" + IntToString(index)));
+        card.SetSize(new Vector2(420.0, 190.0));
+        card.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+        card.SetInteractive(true);
+        card.RegisterToCallback(n"OnRelease", this, n"OnGRFallenClick");
+        card.Reparent(parent);
+        this.AddFill(card, this.Panel(), 0.95);
+        this.AddBorder(card, this.Dim(), 2.0, 1.0);
+
+        let selBorder: ref<GRBorder> = new GRBorder();
+        selBorder.SetAnchor(inkEAnchor.Fill);
+        selBorder.SetThickness(3.0);
+        selBorder.SetTintColor(this.Cyan());
+        selBorder.SetOpacity(this.IsSelected(entry) ? 1.0 : 0.0);
+        selBorder.Reparent(card);
+        ArrayPush(this.m_fallenBorders, selBorder);
+
+        let content: ref<inkVerticalPanel> = new inkVerticalPanel();
+        content.SetAnchor(inkEAnchor.Fill);
+        content.SetMargin(new inkMargin(24.0, 14.0, 16.0, 10.0));
+        content.Reparent(card);
+        let name: ref<inkText> = this.NewWrappedText(entry.name, 38, this.Light(), 380.0);
+        name.SetFontStyle(n"Bold");
+        name.SetOpacity(0.7);
+        name.Reparent(content);
+        let rank: ref<inkText> = this.NewText(this.RankName(entry.rank), 26, this.Grey(), n"Bold");
+        rank.SetMargin(new inkMargin(0.0, 6.0, 0.0, 0.0));
+        rank.Reparent(content);
+        let cause: ref<inkText> = this.NewWrappedText(entry.cause, 24, this.Grey(), 380.0);
+        cause.SetMargin(new inkMargin(0.0, 4.0, 0.0, 0.0));
+        cause.Reparent(content);
+
+        // Same character-count heuristic the original single-line strike used, just capped to the card's
+        // inner width instead of a shorter constant - close enough for a wrapped first line too without
+        // measuring actual rendered text width (not reliably available at construction time).
+        let strikeWidth: Float = MinF(Cast<Float>(StrLen(entry.name)) * 17.0, 380.0);
+        let strike: ref<inkRectangle> = this.NewRect(strikeWidth, 3.0, this.Red(), 0.8);
+        strike.SetAnchor(inkEAnchor.TopLeft);
+        strike.SetMargin(new inkMargin(24.0, 40.0, 0.0, 0.0));
+        strike.Reparent(card);
+    }
+
+    // Horizontal draggable scrollbar, same construction as NewBar/CreateDetail's vertical one but there is
+    // no VerticalScrollBarRef equivalent for horizontal scroll areas (also noted in
+    // GangRetaliationHistory/History.reds's own NewBar) - synced by hand via OnGRFallenScrolled/Dragged.
+    private func NewHBar(parent: ref<inkCompoundWidget>, x: Float, y: Float, w: Float, h: Float) -> ref<inkCanvas> {
+        let bar: ref<inkCanvas> = new inkCanvas();
+        bar.SetAnchor(inkEAnchor.TopLeft);
+        bar.SetMargin(new inkMargin(x, y, 0.0, 0.0));
+        bar.SetSize(new Vector2(w, h));
+        bar.SetInteractive(true);
+        bar.Reparent(parent);
+
+        let track: ref<inkCanvas> = new inkCanvas();
+        track.SetAnchor(inkEAnchor.Fill);
+        track.Reparent(bar);
+        this.AddFill(track, this.DarkRed(), 0.5);
+
+        let grip: ref<inkRectangle> = new inkRectangle();
+        grip.SetAnchor(inkEAnchor.LeftFillVerticaly);
+        grip.SetSize(new Vector2(120.0, h));
+        grip.SetTintColor(this.Red());
+        grip.SetInteractive(true);
+        grip.Reparent(bar);
+        grip.RegisterToCallback(n"OnPress", this, n"OnGRFallenGripPress");
+        grip.RegisterToCallback(n"OnRelease", this, n"OnGRFallenGripRelease");
+        this.m_fallenGrip = grip;
+
+        let drag: ref<inkSliderController> = new inkSliderController();
+        drag.slidingAreaRef = inkWidgetRef.Create(bar);
+        drag.handleRef = inkWidgetRef.Create(grip);
+        drag.direction = inkESliderDirection.Horizontal;
+        drag.autoSizeHandle = false;
+        drag.Setup(0.0, 1.0, 0.0);
+        bar.AttachController(drag);
+        this.m_fallenDrag = drag;
+        return bar;
+    }
+
+    protected cb func OnGRFallenGripPress(evt: ref<inkPointerEvent>) -> Bool {
+        if evt.IsAction(n"click") && IsDefined(this.m_fallenGrip) {
+            this.m_fallenGrip.SetTintColor(this.Cyan());
+        }
+        return false;
+    }
+
+    protected cb func OnGRFallenGripRelease(evt: ref<inkPointerEvent>) -> Bool {
+        if IsDefined(this.m_fallenGrip) {
+            this.m_fallenGrip.SetTintColor(this.Red());
+        }
+        return false;
+    }
+
+    protected cb func OnGRFallenScrolled(value: Vector2) -> Bool {
+        if this.m_fallenSyncing || !IsDefined(this.m_fallenScroller) || !IsDefined(this.m_fallenDrag) {
+            return true;
+        }
+        this.m_fallenScroller.UpdateScrollPositionFromScrollArea();
+        this.m_fallenSyncing = true;
+        this.m_fallenDrag.Setup(0.0, 1.0, this.m_fallenScroller.position);
+        this.m_fallenSyncing = false;
+        return true;
+    }
+
+    protected cb func OnGRFallenDragged(slider: wref<inkSliderController>, progress: Float, value: Float) -> Bool {
+        if !this.m_fallenSyncing && IsDefined(this.m_fallenScroller) {
+            this.m_fallenScroller.SetScrollPosition(progress);
+        }
+        return true;
+    }
+
+    protected cb func OnGRFallenMoreClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") {
+            return false;
+        }
+        let collapsing: Bool = this.m_fallenExpanded;
+        this.m_fallenExpanded = !this.m_fallenExpanded;
+        if collapsing {
+            // Shrinking the expanded list back down: if the current selection was a fallen nemesis (only
+            // reachable while expanded), drop it so Fill()'s own fallback (prefers the living boss, then
+            // a lieutenant, then a soldier) picks a sensible living nemesis instead of leaving the detail
+            // panel pointed at a card that's about to disappear.
+            let k: Int32 = 0;
+            while k < ArraySize(this.m_fallenCards) {
+                if Equals(this.m_fallenCards[k].name, this.m_selName) {
+                    this.m_selName = "";
+                }
+                k += 1;
+            }
+        }
+        this.Fill();
+        this.BringToFront();
+        this.PlaySound(n"Button", n"OnPress");
+        return true;
+    }
+
+    protected cb func OnGRFallenClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") {
+            return false;
+        }
+        let target: CName = evt.GetCurrentTarget().GetName();
         let i: Int32 = 0;
-        while i < shown {
-            let entry: ref<GRMenuEntry> = fallen[i];
-            let card: ref<inkCanvas> = new inkCanvas();
-            card.SetSize(new Vector2(420.0, 110.0));
-            card.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
-            card.Reparent(row);
-            this.AddFill(card, this.Panel(), 0.95);
-            this.AddBorder(card, this.Dim(), 2.0, 1.0);
-
-            let content: ref<inkVerticalPanel> = new inkVerticalPanel();
-            content.SetAnchor(inkEAnchor.Fill);
-            content.SetMargin(new inkMargin(24.0, 14.0, 16.0, 10.0));
-            content.Reparent(card);
-            let name: ref<inkText> = this.NewText(entry.name, 38, this.Light(), n"Bold");
-            name.SetOpacity(0.7);
-            name.Reparent(content);
-            let cause: ref<inkText> = this.NewText(this.RankName(entry.rank) + "  |  " + entry.cause, 28, this.Grey(), n"Regular");
-            cause.Reparent(content);
-
-            let strike: ref<inkRectangle> = this.NewRect(MinF(360.0, Cast<Float>(StrLen(entry.name)) * 17.0), 3.0, this.Red(), 0.8);
-            strike.SetAnchor(inkEAnchor.TopLeft);
-            strike.SetMargin(new inkMargin(24.0, 36.0, 0.0, 0.0));
-            strike.Reparent(card);
+        while i < ArraySize(this.m_fallenCards) {
+            if Equals(target, StringToName("gr_fallen_" + IntToString(i))) {
+                this.m_selName = this.m_fallenCards[i].name;
+                // Clear any living-card highlight (the fallen row isn't rebuilt by a plain selection
+                // change, so this has to restyle in place, same as OnGRCardClick does for its own list).
+                let j: Int32 = 0;
+                while j < ArraySize(this.m_cardFrames) {
+                    this.StyleFrame(this.m_cardFrames[j], this.m_cards[j], false);
+                    this.m_cardSelFrames[j].SetOpacity(0.0);
+                    j += 1;
+                }
+                j = 0;
+                while j < ArraySize(this.m_fallenBorders) {
+                    this.m_fallenBorders[j].SetOpacity(j == i ? 1.0 : 0.0);
+                    j += 1;
+                }
+                this.FillDetail(this.m_fallenCards[i]);
+                this.BringToFront();
+                this.PlaySound(n"Button", n"OnPress");
+                return true;
+            }
             i += 1;
         }
-        if ArraySize(fallen) > shown {
-            let more: ref<inkText> = this.NewText("+" + IntToString(ArraySize(fallen) - shown), 40, this.Grey(), n"Medium");
-            more.SetVAlign(inkEVerticalAlign.Center);
-            more.Reparent(row);
-        }
+        return false;
     }
 
     private func AddSection(parent: ref<inkCompoundWidget>, text: String, top: Float) {
@@ -1047,7 +1418,9 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     private func FillDetail(entry: ref<GRMenuEntry>) {
+        let header: ref<inkVerticalPanel> = this.m_detailHeader;
         let panel: ref<inkVerticalPanel> = this.m_detailContent;
+        header.RemoveAllChildren();
         panel.RemoveAllChildren();
         if !IsDefined(entry) {
             this.m_detail.SetVisible(false);
@@ -1057,19 +1430,40 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let rankColor: HDRColor = this.RankColor(entry.rank);
         let width: Float = 888.0;
 
-        this.NewText(this.RankName(entry.rank) + "  |  " + this.Up(entry.gang), 28, this.Cyan(), n"Bold").Reparent(panel);
-        let name: ref<inkText> = this.NewWrappedText(entry.name, 66, rankColor, width);
-        name.SetFontStyle(n"Bold");
-        name.Reparent(panel);
+        this.NewText(this.RankName(entry.rank) + "  |  " + this.Up(entry.gang), 28, this.Cyan(), n"Bold").Reparent(header);
+        if entry.dead {
+            // White name + red strikethrough, matching the fallen-row card's own look (AddFallenCard).
+            let nameWrap: ref<inkCanvas> = new inkCanvas();
+            nameWrap.SetAnchor(inkEAnchor.TopLeft);
+            nameWrap.SetSize(new Vector2(width, 80.0));
+            nameWrap.Reparent(header);
+            let deadName: ref<inkText> = this.NewWrappedText(entry.name, 66, this.Light(), width);
+            deadName.SetFontStyle(n"Bold");
+            deadName.Reparent(nameWrap);
+            let strikeWidth: Float = MinF(Cast<Float>(StrLen(entry.name)) * 30.0, width);
+            let strike: ref<inkRectangle> = this.NewRect(strikeWidth, 4.0, this.Red(), 0.8);
+            strike.SetAnchor(inkEAnchor.TopLeft);
+            strike.SetMargin(new inkMargin(0.0, 45.0, 0.0, 0.0));
+            strike.Reparent(nameWrap);
+        } else {
+            let name: ref<inkText> = this.NewWrappedText(entry.name, 66, rankColor, width);
+            name.SetFontStyle(n"Bold");
+            name.Reparent(header);
+        }
         if StrLen(entry.title) > 0 {
-            this.NewText("\"" + entry.title + "\"", 42, this.Light(), n"Regular").Reparent(panel);
+            this.NewText("\"" + entry.title + "\"", 42, this.Light(), n"Regular").Reparent(header);
         }
 
-        let contact: ref<inkCompoundWidget> = this.NewTag(this.T(entry.known ? "GR-MenuKnown" : "GR-MenuUnknown"), 26, entry.known ? this.Red() : this.Grey());
+        let knownKey: String = entry.known ? (entry.dead ? "GR-MenuKnewYou" : "GR-MenuKnown") : "GR-MenuUnknown";
+        let contact: ref<inkCompoundWidget> = this.NewTag(this.T(knownKey), 26, entry.known ? this.Red() : this.Grey());
         contact.SetHAlign(inkEHorizontalAlign.Left);
-        contact.SetMargin(new inkMargin(0.0, 36.0, 0.0, 10.0));
+        contact.SetMargin(new inkMargin(0.0, 0.0, 0.0, 10.0));
         contact.Reparent(panel);
-        this.NewWrappedText(this.T(entry.known ? "GR-MenuKnownNote" : "GR-MenuUnknownNote"), 36, this.Light(), width).Reparent(panel);
+        if entry.dead {
+            this.NewWrappedText(entry.cause, 36, this.Light(), width).Reparent(panel);
+        } else {
+            this.NewWrappedText(this.T(entry.known ? "GR-MenuKnownNote" : "GR-MenuUnknownNote"), 36, this.Light(), width).Reparent(panel);
+        }
 
         let renownRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
         renownRow.SetMargin(new inkMargin(0.0, 44.0, 0.0, 12.0));
@@ -1096,7 +1490,9 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         bossMark.SetAnchor(inkEAnchor.TopLeft);
         bossMark.SetMargin(new inkMargin(7.0 * (pip + 8.0), 0.0, 0.0, 0.0));
         bossMark.Reparent(marks);
-        this.NewWrappedText(entry.hint, 36, this.Light(), width).Reparent(panel);
+        if !entry.dead {
+            this.NewWrappedText(entry.hint, 36, this.Light(), width).Reparent(panel);
+        }
 
         this.AddSection(panel, this.T("GR-MenuTraits"), 44.0);
         let traitLines: array<String> = this.TraitLines(entry);
@@ -1191,6 +1587,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.m_links = links;
         ArrayClear(this.m_cards);
         ArrayClear(this.m_cardFrames);
+        ArrayClear(this.m_cardSelFrames);
 
         let gangs: array<String> = IsDefined(this.m_data) ? this.m_data.GetGangs() : [];
         if ArraySize(gangs) == 0 {
@@ -1252,6 +1649,9 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
                 gangLabel = entry.gang;
                 if entry.dead {
                     ArrayPush(fallen, entry);
+                    if Equals(entry.name, this.m_selName) {
+                        selected = entry;
+                    }
                 } else {
                     if entry.known {
                         known += 1;
@@ -2973,6 +3373,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         } else {
             this.m_page += delta;
             this.m_selName = "";
+            this.m_fallenExpanded = false;
             this.Fill();
         }
         this.BringToFront();
@@ -3078,6 +3479,13 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
                 let j: Int32 = 0;
                 while j < ArraySize(this.m_cardFrames) {
                     this.StyleFrame(this.m_cardFrames[j], this.m_cards[j], j == i);
+                    this.m_cardSelFrames[j].SetOpacity(j == i ? 1.0 : 0.0);
+                    j += 1;
+                }
+                // Clear any fallen-row highlight too (that row isn't rebuilt by a plain selection change).
+                j = 0;
+                while j < ArraySize(this.m_fallenBorders) {
+                    this.m_fallenBorders[j].SetOpacity(0.0);
                     j += 1;
                 }
                 this.FillDetail(this.m_cards[i]);
@@ -3099,6 +3507,16 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     protected cb func OnGRGlobalInput(evt: ref<inkPointerEvent>) -> Bool {
+        // Any button release ends a scrollbar drag: put both grips back to red no matter where the pointer
+        // actually let go (same fix GangRetaliationHistory/History.reds's own OnGRChronInput already has).
+        // Registering OnRelease on the grip itself only resets it when the release happens while still
+        // over the grip, which drifts out of sync the moment a drag ends anywhere else.
+        if IsDefined(this.m_detailGrip) {
+            this.m_detailGrip.SetTintColor(this.Red());
+        }
+        if IsDefined(this.m_fallenGrip) {
+            this.m_fallenGrip.SetTintColor(this.Red());
+        }
         if evt.IsHandled() || this.m_fOpen {
             return false;
         }

@@ -1,5 +1,21 @@
 # Changelog - Gang Retaliation
 
+## [1.5.0] - 2026-11-19
+
+### English
+
+#### Changed
+- **Nemesis detail card now scrolls.** A nemesis with a lot of traits no longer spills past the card's bottom edge - the card scrolls (mouse wheel, gamepad, or a draggable bar) below the name and title.
+- **Fallen roster improvements.** Fallen cards are now tall enough to show the cause of death without it running past the card. Click any fallen nemesis to see their full info in the side panel, same as a living one. The "+N" count is now a button that expands the full fallen list with a horizontal scrollbar.
+
+### Español
+
+#### Cambiado
+- **La ficha de un Némesis ahora tiene scroll.** Un Némesis con muchos rasgos ya no se sale por debajo de la ficha - ahora se puede desplazar (rueda del mouse, mando o una barra arrastrable) debajo del nombre y el título.
+- **Mejoras en los caídos.** Las fichas de caídos ahora son más altas para que la causa de muerte no se salga de la ficha. Hacé clic en cualquier caído para ver su información completa en el panel lateral, igual que uno vivo. El contador "+N" ahora es un botón que despliega la lista completa de caídos con una barra de desplazamiento horizontal.
+
+Thanks to **RedFalcon** for all of this work. / Gracias a **RedFalcon** por todo este trabajo.
+
 ## [1.4.9] - 2026-11-18
 
 ### English
