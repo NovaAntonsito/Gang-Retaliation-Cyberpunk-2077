@@ -1849,8 +1849,12 @@ public class GRIntelSystem extends ScriptableSystem {
     // NPC is dead by the time it fires (correct for a knockout gone bad in the meantime - see its comment),
     // but that would silently eat every kill-granted shard too, since the NPC is dead by definition there.
     // GiveShardOnDeath skips that guard instead.
+    //
+    // 2026-11-19, user's call: an already-promoted Nemesis (rank > 0 - see NemesisRank) always drops the
+    // shard, no roll - a named enemy's intel is worth more than a random ganger's. The configurable chance
+    // (ShardChancePercent) still applies to a plain, never-promoted gang member (rank == 0).
     private func RollForShard(npc: ref<ScriptedPuppet>, gang: String, rank: Int32, onDeath: Bool) {
-        if RandRange(0, 100) >= this.ShardChancePercent() {
+        if rank == 0 && RandRange(0, 100) >= this.ShardChancePercent() {
             GRLog("Intel: tirada de shard fallida (" + IntToString(this.ShardChancePercent()) + "%) " + TDBID.ToStringDEBUG(npc.GetRecordID()));
             return;
         }
