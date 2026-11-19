@@ -37,6 +37,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetEnabledDesc", "Turns the Nemesis system on or off. Saved data is kept.");
         this.Text("GR-SetMaxPerGang", "Max Nemeses per gang");
         this.Text("GR-SetMaxPerGangDesc", "How many named enemies each gang hierarchy can hold.");
+        this.Text("GR-SetIntelDropChance", "Intel shard drop chance (%)");
+        this.Text("GR-SetIntelDropChanceDesc", "Chance an intel shard drops on a downed gang member, dead or knocked out.");
         this.Text("GR-SetBossBar", "Nemesis boss bar");
         this.Text("GR-SetBossBarDesc", "Shows the boss health bar with the Nemesis name when they show up or you hit them. Escorts don't get one.");
         this.Text("GR-SetStrongholdBanner", "Stronghold map banner");
@@ -457,6 +459,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetEnabledDesc", "Activa o desactiva el sistema Némesis. Los datos guardados se conservan.");
         this.Text("GR-SetMaxPerGang", "Máximo de Némesis por banda");
         this.Text("GR-SetMaxPerGangDesc", "Cuántos enemigos con nombre puede tener la jerarquía de cada banda.");
+        this.Text("GR-SetIntelDropChance", "Probabilidad de shard de intel (%)");
+        this.Text("GR-SetIntelDropChanceDesc", "Probabilidad de que un shard de intel caiga de un miembro de banda derribado, muerto o inconsciente.");
         this.Text("GR-SetBossBar", "Barra de jefe de los Némesis");
         this.Text("GR-SetBossBarDesc", "Muestra la barra de vida de jefe con el nombre del Némesis cuando aparece o le pegas. La escolta no la tiene.");
         this.Text("GR-SetStrongholdBanner", "Banner de las guaridas en el mapa");

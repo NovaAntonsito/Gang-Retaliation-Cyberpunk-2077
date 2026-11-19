@@ -1830,23 +1830,64 @@ public class GRIntelSystem extends ScriptableSystem {
             }
         }
         StatusEffectHelper.ApplyStatusEffect(npc, t"BaseStatusEffect.Unconscious");
-        GRLog("Intel: " + gang + " inconsciente para extraer (" + GRIntelSystem.RankName(rank) + ", vida " + IntToString(RoundF(health))
+        GRLog("Intel: " + gang + " inconsciente (" + GRIntelSystem.RankName(rank) + ", vida " + IntToString(RoundF(health))
             + "% <= " + IntToString(RoundF(threshold)) + "%) " + TDBID.ToStringDEBUG(npc.GetRecordID()));
-        // Dado via CET a mano en juego (2026-11-18): GiveItem() dentro del propio evento de golpe (sincrono,
-        // a mitad de combate) reporta exito pero el item no persiste - algo en la transicion a "derribado"
-        // probablemente reinicia/limpia el inventario justo despues. Dar el shard con el mismo metodo pero
-        // DEMORADO (0.5 s, una vez asentado el estado) si funciono manualmente, asi que se encola igual.
-        GRIntelCall.Send(this.GetGameInstance(), GRIntelCall.GiveShard(), npc.GetEntityID(), 0.5);
+        this.RollForShard(npc, gang, rank, false);
         return true;
+    }
+
+    // 2026-11-19, user's call: any downed enemy, knocked out OR killed, has the same flat shot at the
+    // shard - no longer guaranteed on knockout, and no longer zero on a kill. Shared by TryKnockOut above
+    // and TryIntelOnDeath below so both paths roll identically. Configurable (0-25%, default 5) via
+    // GRSettings.intelDropPercent, right under "max per gang" in the mod's config menu.
+    private func ShardChancePercent() -> Int32 {
+        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
+        return IsDefined(settings) ? settings.intelDropPercent : 10;
+    }
+
+    // onDeath picks which delayed-call kind to queue: GiveShard's own OnGiveShardDelayed bails out if the
+    // NPC is dead by the time it fires (correct for a knockout gone bad in the meantime - see its comment),
+    // but that would silently eat every kill-granted shard too, since the NPC is dead by definition there.
+    // GiveShardOnDeath skips that guard instead.
+    private func RollForShard(npc: ref<ScriptedPuppet>, gang: String, rank: Int32, onDeath: Bool) {
+        if RandRange(0, 100) >= this.ShardChancePercent() {
+            GRLog("Intel: tirada de shard fallida (" + IntToString(this.ShardChancePercent()) + "%) " + TDBID.ToStringDEBUG(npc.GetRecordID()));
+            return;
+        }
+        // Dado via CET a mano en juego (2026-11-18): GiveItem() dentro del propio evento de golpe/muerte
+        // (sincrono, a mitad de combate) reporta exito pero el item no persiste - algo en la transicion a
+        // "derribado"/"muerto" probablemente reinicia/limpia el inventario justo despues. Dar el shard con
+        // el mismo metodo pero DEMORADO (0.5 s, una vez asentado el estado) si funciono manualmente, asi
+        // que se encola igual.
+        let kind: Int32 = onDeath ? GRIntelCall.GiveShardOnDeath() : GRIntelCall.GiveShard();
+        GRIntelCall.Send(this.GetGameInstance(), kind, npc.GetEntityID(), 0.5);
+    }
+
+    // Llamado por GRSpawner.RecordDeath (Spawner.reds) cuando la muerte quedo atribuida a V, directa o
+    // indirectamente (mismo chequeo que "cause == v" ya usa para las notificaciones/el retorno) - antes
+    // del redisenio de 2026-11-19 un cadaver nunca tiraba intel, solo un derribo.
+    public func TryIntelOnDeath(npc: ref<ScriptedPuppet>) {
+        if !IsDefined(npc) {
+            return;
+        }
+        let gang: String = GRDetection.GetGang(npc);
+        if StrLen(gang) == 0 || this.GangIndex(gang) < 0 {
+            return;
+        }
+        let rank: Int32 = this.NemesisRank(npc);
+        GRLog("Intel: tirada de shard por muerte atribuida a V (" + gang + ", " + GRIntelSystem.RankName(rank) + ") " + TDBID.ToStringDEBUG(npc.GetRecordID()));
+        this.RollForShard(npc, gang, rank, true);
     }
 
     // --- Shard de intel: unica forma de ganar intel desde 2026-11-18 (el mapa/icono HUD/"Extract Data" se
     // retiraron ese mismo dia, confirmados funcionando de forma consistente).
 
-    // Llamado por GRIntelCall.GiveShard() 0.5 s despues de TryKnockOut - ver el comentario de ahi.
-    public func OnGiveShardDelayed(id: EntityID) {
+    // Llamado por GRIntelCall 0.5 s despues de TryKnockOut o TryIntelOnDeath - ver el comentario de ahi.
+    // allowDead es false para un derribo (un derribo que termino en muerte real antes de que esto corra ya
+    // no deberia dar shard) y true para una muerte (el NPC esta muerto por definicion, eso es el punto).
+    public func OnGiveShardDelayed(id: EntityID, allowDead: Bool) {
         let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
-        if !IsDefined(npc) || npc.IsDead() {
+        if !IsDefined(npc) || (!allowDead && npc.IsDead()) {
             return;
         }
         let gang: String = GRDetection.GetGang(npc);
@@ -2054,6 +2095,7 @@ public class GRIntelCall extends DelayCallback {
 
     public static func Tick() -> Int32 { return 1; }
     public static func GiveShard() -> Int32 { return 3; }
+    public static func GiveShardOnDeath() -> Int32 { return 4; }
 
     public static func Send(gi: GameInstance, kind: Int32, id: EntityID, delay: Float) {
         let call: ref<GRIntelCall> = new GRIntelCall();
@@ -2069,7 +2111,11 @@ public class GRIntelCall extends DelayCallback {
             return;
         }
         if this.kind == GRIntelCall.GiveShard() {
-            intel.OnGiveShardDelayed(this.entityID);
+            intel.OnGiveShardDelayed(this.entityID, false);
+            return;
+        }
+        if this.kind == GRIntelCall.GiveShardOnDeath() {
+            intel.OnGiveShardDelayed(this.entityID, true);
             return;
         }
         intel.OnTick();
