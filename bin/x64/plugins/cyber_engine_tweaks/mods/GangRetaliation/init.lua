@@ -297,6 +297,16 @@ local function processDeaths()
 
     for i = 0, count - 1 do
         local n = findNemesis(spawner:GetDeath(i))
+
+        if n and n.status == "dead" and not n.confirmed then
+            local kind = spawner:GetDeathKind(i)
+            if kind == "confirmed" then
+                n.confirmed = true
+                n.returnDay = nil
+                notify(string.format(text("GR-MsgNemesisConfirmed", "%s is dead. For good this time."), labelOf(n)))
+            end
+        end
+
         if n and n.status ~= "dead" then
             local kind = spawner:GetDeathKind(i)
             local cause = spawner:GetDeathCause(i)
