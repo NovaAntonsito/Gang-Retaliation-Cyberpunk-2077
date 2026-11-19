@@ -493,6 +493,14 @@ public class GRSpawner extends ScriptableSystem {
         }
     }
 
+    // Public wrapper for GRDetection.OnNPCDeath (Detection.reds): it already resolves a ScriptedPuppet from
+    // the dying entity's ID, and needs this same broader V-attribution check (vehicle rams, ForceKill,
+    // grapple, not just a direct hit) to decide whether a kill - not just a knockout - rolls for an intel
+    // shard, 2026-11-19.
+    public func WasKilledByPlayer(npc: ref<ScriptedPuppet>) -> Bool {
+        return this.KilledByPlayer(npc as NPCPuppet);
+    }
+
     private func KilledByPlayer(npc: ref<NPCPuppet>) -> Bool {
         if !IsDefined(npc) {
             return false;

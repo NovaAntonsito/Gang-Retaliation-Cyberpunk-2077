@@ -806,6 +806,19 @@ public class GRDetection extends ScriptableSystem {
         if IsDefined(intel) {
             intel.OnNPCDeath(id);
         }
+        // 2026-11-19, user's call: a kill now has the same shot at the intel shard a knockout does, with
+        // the same broad eligibility OnPlayerHitNPC uses for knockouts (any eligible gang NPC, not just an
+        // already-promoted Nemesis) - `byPlayer` alone is only a direct-instigator check (see its wrap
+        // above, OnDeath), the same narrow gap already documented for indirect knockouts, so it's OR'd
+        // with GRSpawner's broader KilledByPlayer (vehicle rams, ForceKill, grapple) via WasKilledByPlayer.
+        let deadNpc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
+        if IsDefined(deadNpc) && IsDefined(intel) && this.IsEnabled() && GRDetection.IsEligible(deadNpc)
+            && !GRDetection.IsPlayerAlly(deadNpc) && !GRIntegrations.IsDDAlly(id) {
+            let killedByV: Bool = byPlayer || (IsDefined(spawner) && spawner.WasKilledByPlayer(deadNpc));
+            if killedByV {
+                intel.TryIntelOnDeath(deadNpc);
+            }
+        }
         let index: Int32 = this.FindCandidate(id);
         if index >= 0 {
             ArrayErase(this.m_candidates, index);
