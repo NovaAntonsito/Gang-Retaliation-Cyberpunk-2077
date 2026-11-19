@@ -2255,10 +2255,18 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func ClearDeaths() {
-        ArrayClear(this.m_deaths);
-        ArrayClear(this.m_deathKinds);
-        ArrayClear(this.m_deathCauses);
-        ArrayClear(this.m_deathEntityIDs);
+        let pendingIndex: Int32 = ArraySize(this.m_deathEntityIDs) - 1;
+        while pendingIndex >= 0 {
+            let deathEntityId: EntityID = this.m_deathEntityIDs[pendingIndex];
+            let deathEntity: wref<Entity> = GameInstance.FindEntityByID(this.GetGameInstance(), deathEntityId);
+            if (deathEntity == null) {
+                ArrayErase(this.m_deaths, pendingIndex);
+                ArrayErase(this.m_deathKinds, pendingIndex);
+                ArrayErase(this.m_deathCauses, pendingIndex);
+                ArrayErase(this.m_deathEntityIDs, pendingIndex);
+            }
+            pendingIndex -= 1;
+        }
     }
 
     public func GetAppearanceReportCount() -> Int32 {
