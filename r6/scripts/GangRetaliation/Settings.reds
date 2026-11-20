@@ -178,6 +178,16 @@ public class GRSettings extends ScriptableSystem {
     public let fleeHealthPercent: Int32 = 35;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatTriggers")
+    @runtimeProperty("ModSettings.category.order", "20")
+    @runtimeProperty("ModSettings.displayName", "GR-SetCorpseRemoval")
+    @runtimeProperty("ModSettings.description", "GR-SetCorpseRemovalDesc")
+    @runtimeProperty("ModSettings.step", "5")
+    @runtimeProperty("ModSettings.min", "5")
+    @runtimeProperty("ModSettings.max", "120")
+    public let corpseRemovalSeconds: Int32 = 30;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatAmbush")
     @runtimeProperty("ModSettings.category.order", "30")
     @runtimeProperty("ModSettings.displayName", "GR-SetAmbushEnabled")

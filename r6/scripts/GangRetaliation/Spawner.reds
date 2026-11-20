@@ -33,6 +33,7 @@ public class GRSpawner extends ScriptableSystem {
     private let m_deaths: array<Int32>;
     private let m_deathKinds: array<String>;
     private let m_deathEntityIDs: array<EntityID>;
+    private let m_deathSince: array<Float>;
 
     private let m_finisherIds: array<Int32>;
 
@@ -72,6 +73,7 @@ public class GRSpawner extends ScriptableSystem {
     private let m_leftNemesis: array<Int32>;
     private let m_leftSince: array<Float>;
     private let m_leftSent: array<Bool>;
+    private let m_leftUnseen: array<Float>;
     private let m_leftNames: array<String>;
 
     private let m_machineLoggedId: Int32;
@@ -457,6 +459,7 @@ public class GRSpawner extends ScriptableSystem {
         let kind: String = this.DeathKind(nemesisId, npc);
         ArrayPush(this.m_deaths, nemesisId);
         ArrayPush(this.m_deathEntityIDs, id);
+        ArrayPush(this.m_deathSince, this.Now());
         let cause: String = this.TakeLastHit(nemesisId);
         if NotEquals(cause, "v") && this.KilledByPlayer(npc as NPCPuppet) {
             GRLog("Nemesis #" + IntToString(nemesisId) + ": muerte indirecta (" + cause + "), atribuida a V");
@@ -1885,6 +1888,7 @@ public class GRSpawner extends ScriptableSystem {
         ArrayClear(this.m_leftNemesis);
         ArrayClear(this.m_leftSince);
         ArrayClear(this.m_leftSent);
+        ArrayClear(this.m_leftUnseen);
         ArrayClear(this.m_leftNames);
         des.DeleteTagged(n"GangRetaliation");
         this.ResetEncounter();
@@ -1912,6 +1916,7 @@ public class GRSpawner extends ScriptableSystem {
         ArrayPush(this.m_leftNemesis, nemesisId);
         ArrayPush(this.m_leftSince, this.Now());
         ArrayPush(this.m_leftSent, false);
+        ArrayPush(this.m_leftUnseen, 0.0);
         ArrayPush(this.m_leftNames, name);
     }
 
@@ -1955,6 +1960,7 @@ public class GRSpawner extends ScriptableSystem {
         ArrayErase(this.m_leftNemesis, i);
         ArrayErase(this.m_leftSince, i);
         ArrayErase(this.m_leftSent, i);
+        ArrayErase(this.m_leftUnseen, i);
         ArrayErase(this.m_leftNames, i);
     }
 
@@ -2000,13 +2006,20 @@ public class GRSpawner extends ScriptableSystem {
             if IsDefined(entity) {
                 let distance: Float = Vector4.Distance(entity.GetWorldPosition(), player.GetWorldPosition());
                 let seen: Bool = this.PlayerSeesPos(player, entity.GetWorldPosition());
+                if seen {
+                    this.m_leftUnseen[i] = 0.0;
+                } else {
+                    this.m_leftUnseen[i] += 1.0;
+                }
                 let npc: ref<ScriptedPuppet> = entity as ScriptedPuppet;
                 if IsDefined(npc) {
                     if GRDetection.IsNeutralized(npc) {
                         if this.m_leftNemesis[i] > 0 {
                             this.MarkDead(id);
                         }
-                        remove = !seen && (distance > 20.0 || age > 60.0);
+                        let settings: ref<GRSettings> = GRSettings.Get(gi);
+                        let corpseSeconds: Float = Cast<Float>(IsDefined(settings) ? settings.corpseRemovalSeconds : 30);
+                        remove = !seen && (distance > 20.0 || age > corpseSeconds || this.m_leftUnseen[i] >= 15.0);
                     } else {
                         if !this.m_leftSent[i] && !(IsDefined(det) && det.IsRunningAway(id)) {
                             this.m_leftSent[i] = true;
@@ -2262,11 +2275,27 @@ public class GRSpawner extends ScriptableSystem {
         return index < ArraySize(this.m_deathCauses) ? this.m_deathCauses[index] : "v";
     }
 
+    // How long ago this death was recorded - lets Lua hold off resolving return/no-return for a fixed
+    // window (processDeaths), so a decapitation landed after the kill (MarkHeadRemoved) still has a
+    // chance to flip m_deathKinds[index] to "confirmed" before the outcome is locked in.
+    public func GetDeathAge(index: Int32) -> Float {
+        return index < ArraySize(this.m_deathSince) ? this.Now() - this.m_deathSince[index] : 999.0;
+    }
+
+    public func RemoveDeathAt(index: Int32) {
+        ArrayErase(this.m_deaths, index);
+        ArrayErase(this.m_deathKinds, index);
+        ArrayErase(this.m_deathCauses, index);
+        ArrayErase(this.m_deathEntityIDs, index);
+        ArrayErase(this.m_deathSince, index);
+    }
+
     public func ClearDeaths() {
         ArrayClear(this.m_deaths);
         ArrayClear(this.m_deathKinds);
         ArrayClear(this.m_deathCauses);
         ArrayClear(this.m_deathEntityIDs);
+        ArrayClear(this.m_deathSince);
     }
 
     public func GetAppearanceReportCount() -> Int32 {

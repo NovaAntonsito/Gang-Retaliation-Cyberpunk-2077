@@ -193,7 +193,7 @@ local function createNemesis(evt)
     Store.save()
 
     local label = Names.display(nemesis, lang()) .. " (" .. Names.gangLabel(gang) .. ")"
-    if evt.origin == "fled" then
+    if evt.origin == "fled" or evt.origin == "fleddismembered" then
         if evt.limbsMissing then
             notify(string.format(text("GR-MsgFledDismembered", "%s ran away injured. They will come back for you."), label))
         else
@@ -273,7 +273,7 @@ end
 local function giveBossWeapon(n, force)
     local rewards = getSystem("GangRetaliation.GRRewards")
     if not rewards or not n.gang then return "" end
-    local escapes = (n.escapes or 0) + ((n.origin == "escaped" or n.origin == "fled") and 1 or 0)
+    local escapes = (n.escapes or 0) + ((n.origin == "escaped" or n.origin == "fled" or n.origin == "escapeddismembered" or n.origin == "fleddismembered") and 1 or 0)
     rewards:AddName(n.id, Names.display(n, lang()))
     local weapon = rewards:GiveBossWeapon(n.id, n.gang, Traits.csv(n), escapes, force)
     if weapon and weapon ~= "" then notify(string.format(text("GR-MsgBossWeapon", "You took %s."), weapon)) end
@@ -289,58 +289,76 @@ local function pushRewardNames()
     end
 end
 
+-- Holds each death for a window before resolving return/no-return, so a decapitation landed after
+-- the kill (GRSpawner.MarkHeadRemoved) still has time to flip the recorded kind to "confirmed" (no return)
+-- before the outcome is locked in and the notification shown. A decapitation is terminal - once confirmed,
+-- nothing can un-confirm it - so that case resolves immediately instead of waiting out the rest of the window.
+-- The window itself tracks the player's "Nemesis Corpse Removal" slider (GRSettings.corpseRemovalSeconds):
+-- there's no point holding a death longer than the corpse can possibly still be standing to be decapitated.
+local function deathResolutionDelaySeconds()
+    local settings = getSettings()
+    return settings and settings.corpseRemovalSeconds or 30.0
+end
+
 local function processDeaths()
     local spawner = getSpawner()
     if not spawner then return end
     local count = spawner:GetDeathCount()
     if count == 0 then return end
 
-    for i = 0, count - 1 do
-        local n = findNemesis(spawner:GetDeath(i))
-        if n and n.status ~= "dead" then
-            local kind = spawner:GetDeathKind(i)
-            local cause = spawner:GetDeathCause(i)
-            n.status = "dead"
-            n.diedAt = os.time()
-            n.deathDay = gameDay()
-            n.diedByGang = nil
-            n.koDeath = (kind == "knockout")
-            if string.sub(cause, 1, 5) == "gang:" then
-                n.diedBy, n.diedByGang = "gang", string.sub(cause, 6)
-            else
-                n.diedBy = cause
-            end
-            Store.dirty = true
+    local delay = deathResolutionDelaySeconds()
+    local dirty = false
+    for i = count - 1, 0, -1 do
+        if spawner:GetDeathAge(i) >= delay or spawner:GetDeathKind(i) == "confirmed" then
+            local n = findNemesis(spawner:GetDeath(i))
+            if n and n.status ~= "dead" then
+                local kind = spawner:GetDeathKind(i)
+                local cause = spawner:GetDeathCause(i)
+                n.status = "dead"
+                n.diedAt = os.time()
+                n.deathDay = gameDay()
+                n.diedByGang = nil
+                n.koDeath = (kind == "knockout")
+                if string.sub(cause, 1, 5) == "gang:" then
+                    n.diedBy, n.diedByGang = "gang", string.sub(cause, 6)
+                else
+                    n.diedBy = cause
+                end
+                Store.dirty = true
 
-            local settings = getSettings()
-            local returns = Hierarchy.resolveDeath(n, kind, {
-                day = gameDay(), random = math.random,
-                settings = { returnChancePercent = settings and settings.returnChancePercent or 40 },
-            })
-            debugLog(string.format("%s muere (%s, %s): %s", labelOf(n), kind, cause, returns and ("vuelve el dia " .. string.format("%.1f", n.returnDay)) or "no vuelve"))
-            if n.diedBy == "police" then
-                notify(string.format(text("GR-MsgNemesisDeadPolice", "Rumor: the NCPD took down %s."), labelOf(n)))
-            elseif n.diedBy == "gang" then
-                notify(string.format(text("GR-MsgNemesisDeadGang", "Rumor: %s was taken down by the %s."), labelOf(n), Names.gangLabel(n.diedByGang)))
-            elseif n.diedBy == "other" then
-                notify(string.format(text("GR-MsgNemesisDeadOther", "%s is dead. Nobody knows who did it."), labelOf(n)))
-            elseif kind == "confirmed" then
-                notify(string.format(text("GR-MsgNemesisConfirmed", "%s is dead. For good this time."), labelOf(n)))
-            else
-                notify(string.format(text("GR-MsgNemesisDead", "%s is dead... for now."), labelOf(n)))
+                local settings = getSettings()
+                local returns = Hierarchy.resolveDeath(n, kind, {
+                    day = gameDay(), random = math.random,
+                    settings = { returnChancePercent = settings and settings.returnChancePercent or 40 },
+                })
+                debugLog(string.format("%s muere (%s, %s): %s", labelOf(n), kind, cause, returns and ("vuelve el dia " .. string.format("%.1f", n.returnDay)) or "no vuelve"))
+                if n.diedBy == "police" then
+                    notify(string.format(text("GR-MsgNemesisDeadPolice", "Rumor: the NCPD took down %s."), labelOf(n)))
+                elseif n.diedBy == "gang" then
+                    notify(string.format(text("GR-MsgNemesisDeadGang", "Rumor: %s was taken down by the %s."), labelOf(n), Names.gangLabel(n.diedByGang)))
+                elseif n.diedBy == "other" then
+                    notify(string.format(text("GR-MsgNemesisDeadOther", "%s is dead. Nobody knows who did it."), labelOf(n)))
+                elseif kind == "confirmed" then
+                    notify(string.format(text("GR-MsgNemesisConfirmed", "%s is dead. For good this time."), labelOf(n)))
+                else
+                    notify(string.format(text("GR-MsgNemesisDead", "%s is dead... for now."), labelOf(n)))
+                end
+                Hierarchy.onDeath(Store.ensureCampaign(GR.campaignId), n, gameDay())
+                if (n.rank or 1) == Hierarchy.BOSS and n.diedBy == "v" then
+                    local okW, errW = pcall(giveBossWeapon, n, false)
+                    if not okW then print("[GangRetaliation] Error en arma de Jefe: " .. tostring(errW)) end
+                end
+                if (n.rank or 1) == Hierarchy.BOSS then
+                    notify(string.format(text("GR-MsgBossDown", "The %s lost their boss. Someone will want the throne..."), Names.gangLabel(n.gang)))
+                end
             end
-            Hierarchy.onDeath(Store.ensureCampaign(GR.campaignId), n, gameDay())
-            if (n.rank or 1) == Hierarchy.BOSS and n.diedBy == "v" then
-                local okW, errW = pcall(giveBossWeapon, n, false)
-                if not okW then print("[GangRetaliation] Error en arma de Jefe: " .. tostring(errW)) end
-            end
-            if (n.rank or 1) == Hierarchy.BOSS then
-                notify(string.format(text("GR-MsgBossDown", "The %s lost their boss. Someone will want the throne..."), Names.gangLabel(n.gang)))
-            end
+            spawner:RemoveDeathAt(i)
+            dirty = true
         end
     end
-    spawner:ClearDeaths()
-    Store.save()
+    if dirty then
+        Store.save()
+    end
 end
 
 local function launchAmbush(n, forceVehicle)
@@ -999,7 +1017,7 @@ local function pushMenu()
         end
         local title = (l == "es") and n.titleEs or n.titleEn
 
-        local escapes = (n.escapes or 0) + ((n.origin == "escaped" or n.origin == "fled") and 1 or 0)
+        local escapes = (n.escapes or 0) + ((n.origin == "escaped" or n.origin == "fled" or n.origin == "escapeddismembered" or n.origin == "fleddismembered") and 1 or 0)
         sys:Add(n.gang, Names.gangLabel(n.gang), n.rank or 1, n.status == "dead", n.name or "?", title or "",
             Ambush.hasMetV(n), n.renown or 0)
         sys:AddDetail(menuTraits(n), renownHint(n), text("GR-Origin-" .. (n.origin or "escaped"), n.origin or ""), cause)

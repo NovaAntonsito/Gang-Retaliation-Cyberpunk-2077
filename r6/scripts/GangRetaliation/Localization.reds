@@ -89,7 +89,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-RankLieutenant", "Lieutenant");
         this.Text("GR-RankBoss", "Boss");
         this.Text("GR-MsgEscaped", "%s got away wounded. They will remember you.");
-        this.Text("GR-MsgEscapedDismembered", "%s got away missing a limb. They will remember you.");
+        this.Text("GR-MsgEscapedDismembered", "%s slipped away missing some meat. Your days are numbered.");
         this.Text("GR-MsgKnockedOut", "%s upgraded their chrome, vowing revenge.");
         this.Text("GR-MsgKnockedOutDismembered", "%s awoke with new chrome. They won't forget this.");
         this.Text("GR-MsgGangFull", "%s already has its maximum of Nemeses.");
@@ -234,9 +234,11 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetLastManFleesDesc", "When only one wounded ganger is left in a fight, they run away shouting. If they get away, they become a Nemesis.");
         this.Text("GR-SetFleeHealth", "Health to flee (%)");
         this.Text("GR-SetFleeHealthDesc", "The last ganger standing flees at or below this health.");
+        this.Text("GR-SetCorpseRemoval", "Nemesis corpse removal (seconds)");
+        this.Text("GR-SetCorpseRemovalDesc", "How long a dead or unconscious Nemesis body from an ambush/escort sticks around once you're not looking at it, before it's cleared away.");
         this.Text("GR-UiFleeTarget", "Debug: make target flee");
         this.Text("GR-MsgFled", "%s ran away. They will come back for you.");
-        this.Text("GR-MsgFledDismembered", "%s ran away injured. They will come back for you.");
+        this.Text("GR-MsgFledDismembered", "%s ran away, well, most of them did. Watch your back.");
 
         this.Text("GR-Gang-Maelstrom", "Maelstrom");
         this.Text("GR-Gang-TygerClaws", "Tyger Claw");
@@ -299,7 +301,9 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-MenuNoFallen", "Nobody from this gang has fallen yet.");
         this.Text("GR-MenuNoSoldiers", "No soldiers yet: they appear when someone escapes from you.");
         this.Text("GR-Origin-escaped", "got away from you wounded");
+        this.Text("GR-Origin-escapeddismembered", "got away from you missing a limb");
         this.Text("GR-Origin-fled", "ran from a fight with you");
+        this.Text("GR-Origin-fleddismembered", "ran from a fight with you missing a limb");
         this.Text("GR-Origin-knockedout", "knocked unconscious by you");
         this.Text("GR-Origin-debug", "got away from you wounded");
         this.Text("GR-Origin-seeded", "original leadership of the gang");
@@ -511,7 +515,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-RankLieutenant", "Teniente");
         this.Text("GR-RankBoss", "Jefe");
         this.Text("GR-MsgEscaped", "%s se te ha escapado con vida. No te olvidará.");
-        this.Text("GR-MsgEscapedDismembered", "%s se te ha escapado sin un miembro. No te olvidará.");
+        this.Text("GR-MsgEscapedDismembered", "%s se escabulló sin un poco de carne. Tus días están contados.");
         this.Text("GR-MsgKnockedOut", "%s mejoró su cyberware, jurando venganza.");
         this.Text("GR-MsgKnockedOutDismembered", "%s despertó con cyberware nuevo. No lo olvidará.");
         this.Text("GR-MsgGangFull", "%s ya tiene el máximo de Némesis.");
@@ -656,9 +660,11 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetLastManFleesDesc", "Cuando solo queda un pandillero herido en la pelea, huye gritando. Si consigue escapar, se convierte en Némesis.");
         this.Text("GR-SetFleeHealth", "Vida para huir (%)");
         this.Text("GR-SetFleeHealthDesc", "El último pandillero en pie huye con esta vida o menos.");
+        this.Text("GR-SetCorpseRemoval", "Eliminación de cadáveres Némesis (segundos)");
+        this.Text("GR-SetCorpseRemovalDesc", "Cuánto tarda en desaparecer el cuerpo muerto o inconsciente de un Némesis de emboscada/escolta una vez que no lo estás mirando.");
         this.Text("GR-UiFleeTarget", "Debug: hacer huir al objetivo");
         this.Text("GR-MsgFled", "%s ha huido. Volverá a por ti.");
-        this.Text("GR-MsgFledDismembered", "%s ha huido herido. Volverá a por ti.");
+        this.Text("GR-MsgFledDismembered", "%s huyó, bueno, la mayor parte al menos. Cuídate las espaldas.");
 
         this.Text("GR-Gang-Maelstrom", "Maelstrom");
         this.Text("GR-Gang-TygerClaws", "Tyger Claw");
@@ -721,7 +727,9 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-MenuNoFallen", "Nadie de esta banda ha caído todavía.");
         this.Text("GR-MenuNoSoldiers", "Sin soldados todavía: aparecen cuando alguien se te escapa.");
         this.Text("GR-Origin-escaped", "se te escapó herido");
+        this.Text("GR-Origin-escapeddismembered", "se te escapó sin un miembro");
         this.Text("GR-Origin-fled", "huyó de un tiroteo contigo");
+        this.Text("GR-Origin-fleddismembered", "huyó de un tiroteo contigo sin un miembro");
         this.Text("GR-Origin-knockedout", "dejado inconsciente por ti");
         this.Text("GR-Origin-debug", "se te escapó herido");
         this.Text("GR-Origin-seeded", "cúpula original de la banda");
