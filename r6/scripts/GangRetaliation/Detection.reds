@@ -938,6 +938,8 @@ public class GRDetection extends ScriptableSystem {
             if GameInstance.FindEntityByID(this.GetGameInstance(), id) != null {
                 GameInstance.GetDynamicEntitySystem().DeleteEntity(id);
                 this.Debug("Escondido (fuera del mundo) finalmente eliminado");
+            } else {
+                this.Debug("Escondido (fuera del mundo): ya no existia al llegar la eliminacion diferida, nada que borrar");
             }
             return;
         }
