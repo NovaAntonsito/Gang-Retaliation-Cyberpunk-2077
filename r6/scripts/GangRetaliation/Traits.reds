@@ -115,6 +115,17 @@ public class GRTraits extends ScriptableSystem {
             hitEvent.attackComputed.MultAttackValue(mult, type);
             this.Reveal(nemesisId, trait);
             GRTaunts.OnTrait(hitEvent, trait);
+            this.BountyWeakness(nemesisId, trait);
+        }
+    }
+
+    private func BountyWeakness(nemesisId: Int32, trait: String) {
+        if !GRTraits.IsWeakness(trait) {
+            return;
+        }
+        let bounties: ref<GRBounties> = GRBounties.Get(this.GetGameInstance());
+        if IsDefined(bounties) {
+            bounties.OnWeaknessHit(nemesisId);
         }
     }
 
@@ -123,6 +134,7 @@ public class GRTraits extends ScriptableSystem {
             hitEvent.attackComputed.MultAttackValue(mult);
             this.Reveal(nemesisId, trait);
             GRTaunts.OnTrait(hitEvent, trait);
+            this.BountyWeakness(nemesisId, trait);
         }
     }
 

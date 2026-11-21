@@ -760,6 +760,12 @@ public class GRSpawner extends ScriptableSystem {
             this.m_objectiveSource = "not an objective";
             return -1.0;
         }
+        // El encargo propio del Bounty Board (GigZone.reds, StreetStory gr_bounty_1) no cuenta como "objetivo de mision": su pin esta en el centro
+        // de la zona de caza y bloqueaba al Nemesis (y las emboscadas) mientras V estuviera a menos de 150 m.
+        if GRGigZone.IsGigObjective(gi, objective) {
+            this.m_objectiveSource = "own gig (ignored)";
+            return -1.0;
+        }
         let positions: array<Vector3>;
         mappins.GetQuestMappinPositionsByObjective(Cast<Uint32>(journal.GetEntryHash(objective)), positions);
         this.m_objectivePins = ArraySize(positions);
@@ -800,6 +806,9 @@ public class GRSpawner extends ScriptableSystem {
     public func IsStoryQuestTracked() -> Bool {
         let quest: wref<JournalQuest> = this.GetTrackedQuest();
         if !IsDefined(quest) {
+            return false;
+        }
+        if GRGigZone.IsGigQuest(this.GetGameInstance(), quest) {
             return false;
         }
         let questType: gameJournalQuestType = quest.GetType();
@@ -1770,6 +1779,10 @@ public class GRSpawner extends ScriptableSystem {
         if IsDefined(twr) {
             twr.Tick();
         }
+        let bounties: ref<GRBounties> = GRBounties.Get(this.GetGameInstance());
+        if IsDefined(bounties) {
+            bounties.Tick();
+        }
         this.CheckNeutralized();
         this.CheckTaunts();
         this.TickImmunity();
@@ -2261,6 +2274,16 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func ClearDeaths() {
+        let bounties: ref<GRBounties> = GRBounties.Get(this.GetGameInstance());
+        let stronghold: ref<GRStronghold> = GRStronghold.Get(this.GetGameInstance());
+        if IsDefined(bounties) {
+            let i: Int32 = 0;
+            while i < ArraySize(this.m_deaths) {
+                let inLair: Bool = IsDefined(stronghold) && stronghold.SpawnedInLair(this.m_deaths[i]);
+                bounties.OnDeath(this.m_deaths[i], this.GetDeathKind(i), this.GetDeathCause(i), inLair);
+                i += 1;
+            }
+        }
         ArrayClear(this.m_deaths);
         ArrayClear(this.m_deathKinds);
         ArrayClear(this.m_deathCauses);

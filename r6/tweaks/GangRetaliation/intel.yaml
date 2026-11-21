@@ -29,7 +29,41 @@ WorldMap.GRStrongholdFilterGroup:
   filterType: WorldMap.RelicDeviceFilter
   mappins:
     - WorldMap.GRStrongholdVariant
+    - WorldMap.GRBountyZoneVariant
   shouldCollectMappins: false
+
+# Zona de busqueda del Bounty Board (Rewards.reds, GRBounties.AddPins): pin central + anillo de pines alrededor de donde
+# anda el Nemesis del contrato. Variante propia CPO_PingLootVariant (otra variante del cooperativo cancelado; Icon Framework
+# usa GoHere y las guaridas Door: no chocan). Va en el mismo grupo de filtro GANG RETALIATION. Solo mapa y minimapa, no
+# el mundo 3D: el icono lo pone GRApplyMappinIcon (bounty_hunt el centro, undiscovered el anillo).
+WorldMap.GRBountyZoneVariant:
+  $type: gamedataMappinVariant_Record
+  enumName: CPO_PingLootVariant
+
+Mappins.GRBountyZoneMappinDefinition:
+  $type: gamedataMappinDefinition_Record
+  showInWorld: false
+  showOnMap: true
+  showOnMinimap: true
+  visibilityRange: 0
+  possibleVariants:
+    - WorldMap.GRBountyZoneVariant
+
+# Circulo de la zona en el MINIMAPA (Rewards.reds, GRBounties.AddCircle). Definicion propia copiada de Mappins.DeviceMappinDefinition pero
+# SIN mundo ni mapa grande: el mappin lleva GRZoneCircleData (hereda GameplayRoleMappinData) y el minimapa lo maneja con
+# MinimapDeviceMappinController, que dibuja un circulo de radio m_range. Por defecto el circulo usa la definicion del juego
+# (Mappins.DeviceMappinDefinition); esta propia queda para probar con DevZoneVanilla(false).
+# Con showInWorld: false el minimapa NUNCA tomaba el mappin (probado). Unica diferencia real con la del juego (ademas de la lista de
+# variantes, que la del juego tampoco incluye GenericRoleVariant y funciona): showInWorld. Se deja en true por si esa es la causa;
+# el icono del mundo 3D se oculta por codigo (GameplayMappinController.OnUpdate en Stronghold.reds). SIN PROBAR.
+Mappins.GRZoneCircleMappinDefinition:
+  $type: gamedataMappinDefinition_Record
+  showInWorld: true
+  showOnMap: false
+  showOnMinimap: true
+  visibilityRange: 0
+  possibleVariants:
+    - Mappins.GenericRoleVariant
 
 Mappins.GRStrongholdMappinDefinition:
   $type: gamedataMappinDefinition_Record

@@ -74,6 +74,13 @@ public class GRSettings extends ScriptableSystem {
     public let notifyCenter: Bool = false;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatGeneral")
+    @runtimeProperty("ModSettings.category.order", "10")
+    @runtimeProperty("ModSettings.displayName", "GR-SetBountySms")
+    @runtimeProperty("ModSettings.description", "GR-SetBountySmsDesc")
+    public let bountySms: Bool = true;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatToughness")
     @runtimeProperty("ModSettings.category.order", "15")
     @runtimeProperty("ModSettings.displayName", "GR-SetHealthSoldier")
