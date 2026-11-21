@@ -5,6 +5,7 @@
 ### English
 
 #### Fixed
+- A decapitation that lands right after the kill, or on a Nemesis who is already down, now confirms the death for good: the Nemesis does not come back and the "For good this time" message shows. Thanks to **Aephiex** for finding the problem and writing the fix.
 - Boss weapons stored in your stash now show in the ARSENAL (marked IN THE STASH; open and close the stash once to register them). Take them out to use them in Augment.
 - Hunt zones no longer land underground: the hunt point is checked against the surface (a point with a floor or structure more than 6 m above it is discarded and another is picked; if the ground isn't loaded yet, it is checked again when you get within 200 m), and the pin and the target appear at surface level.
 
@@ -15,17 +16,19 @@
 - **Bounty Board.** New button under JOURNAL. Fixers put a price on Nemeses who know you; take them down meeting the contract to get paid, with bonuses for exploiting their weaknesses.
 - Fixers send Bounty Board news by SMS (new setting **Bounty Board notices by SMS**, on by default; off shows a short on-screen notice).
 - Bounty Board SMS now stay in your phone: they arrive in a **Bounty Board** thread inside the real fixer's contact (Padre, Regina Jones, Wakako Okada, Dakota Smith, Mr. Hands, Rogue, El Capitán). Fixers you haven't met yet write from a **Bounty Board** contact. The details of each contract are on the Bounty Board.
-- **Search zone.** Accept a contract and the fixer marks a search zone of about 70-80 m around where the target was seen: a circle on your minimap (it turns light yellow while you are inside it) and the journal job with its GPS route on the map. Walk into the circle and the target shows up with 2 or 3 escorts; walk away (over 250 m, out of combat) and they leave, coming back when you return. The zone goes away when the contract is paid, failed or runs out. Contracts accepted before this update get their zone too.
+- **Search zone.** Accept a contract and the fixer marks a search zone of about 70-80 m around where the target was seen: a circle on your minimap and the journal job with its GPS route on the map. Walk into the circle and the target shows up with 2 or 3 escorts; walk away (over 250 m, out of combat) and they leave, coming back when you return. The zone goes away when the contract is paid, failed or runs out. Contracts accepted before this update get their zone too.
 - **Boss contracts.** Rare contracts (about 12% a day, one at a time) on a gang's Boss, who must die **inside their stronghold**: taking them down anywhere else leaves the job open. The zone is a wide circle (400 m, 250 m once you have 50% intel on that gang) somewhere around the stronghold without giving it away, and it follows the stronghold if the gang moves. If you already located the stronghold there is no circle: it's on your map. Bosses no longer show up in regular contracts.
 - Bounty Board contracts arrive as **offers**: open the contract and press **ACCEPT CONTRACT** (or F) to take it. Up to 3 accepted contracts and 3 pending offers at a time. Only accepted contracts pay: take down the target of an offer you never accepted and the contract is lost. Offers expire like contracts.
 - Contracts also pay **XP** (Soldier 350, Lieutenant 650, Boss 1,000, +50 per escape, up to +250) and some **Street Cred**.
 - Intel Shards also reveal a hidden trait of one of the gang's Nemeses, highest rank first.
 - The scanner shows a Nemesis's traits in their own TRAITS section.
 - Every Nemesis who goes down, knocked out or killed, now carries an Intel Shard.
+- A rare surprise from Rogue: once in a while one of her contracts comes marked **SPECIAL**. Complete every optional objective on it and she has something for you.
 
 ### Español
 
 #### Arreglado
+- Una decapitación que llega justo después de la muerte, o sobre un Némesis que ya está caído, ahora confirma la muerte para siempre: el Némesis no vuelve y sale el mensaje de que cayó para siempre. Gracias a **Aephiex** por encontrar el problema y escribir el arreglo.
 - Las armas de Jefe que guardas en el alijo ahora aparecen en el ARSENAL (marcadas EN EL ALIJO; abre y cierra el alijo una vez para registrarlas). Sácalas del alijo para usarlas en el Aumento.
 - Las zonas de caza ya no quedan bajo tierra: el punto de caza se comprueba contra la superficie (si encima hay un piso o una estructura a más de 6 m, se descarta y se elige otro; si el suelo todavía no cargó, se vuelve a comprobar cuando estés a menos de 200 m), y el pin y el objetivo aparecen a nivel de superficie.
 
@@ -36,13 +39,30 @@
 - **Bounty Board.** Botón nuevo debajo de JOURNAL. Los fixers ponen precio a los Némesis que te conocen; elimínalos cumpliendo el contrato para cobrar, con bonos por aprovechar sus debilidades.
 - Los fixers mandan las novedades del Bounty Board por SMS (nuevo ajuste **Avisos del Bounty Board por SMS**, activado por defecto; apagado muestra un aviso corto en pantalla).
 - Los SMS del Bounty Board ahora quedan en el teléfono: llegan a un hilo **Bounty Board** dentro del contacto del fixer real (Padre, Regina Jones, Wakako Okada, Dakota Smith, Mr. Hands, Rogue, El Capitán). Los fixers que todavía no conoces escriben desde un contacto **Bounty Board**. Los detalles de cada contrato están en el Bounty Board.
-- **Zona de búsqueda.** Acepta un contrato y el fixer te marca una zona de búsqueda de unos 70-80 m alrededor de donde vieron al objetivo: un círculo en el minimapa (se pone amarillo claro mientras estás adentro) y el encargo del diario con su ruta de GPS en el mapa. Entra al círculo y el objetivo aparece con 2 o 3 escoltas; si te alejas (más de 250 m, fuera de combate) se van, y vuelven cuando regresas. La zona desaparece al cobrar, fallar o vencer el contrato. Los contratos aceptados antes de esta versión también reciben su zona.
+- **Zona de búsqueda.** Acepta un contrato y el fixer te marca una zona de búsqueda de unos 70-80 m alrededor de donde vieron al objetivo: un círculo en el minimapa y el encargo del diario con su ruta de GPS en el mapa. Entra al círculo y el objetivo aparece con 2 o 3 escoltas; si te alejas (más de 250 m, fuera de combate) se van, y vuelven cuando regresas. La zona desaparece al cobrar, fallar o vencer el contrato. Los contratos aceptados antes de esta versión también reciben su zona.
 - **Contratos de Jefe.** Contratos raros (cerca de un 12 % al día, uno a la vez) sobre el Jefe de una banda, que tiene que morir **dentro de su guarida**: si cae en otro sitio, el contrato sigue abierto. La zona es un círculo amplio (400 m, 250 m cuando tienes 50 % de intel de esa banda) en algún punto alrededor de la guarida sin revelarla, y sigue a la guarida si la banda se muda. Si ya localizaste la guarida no hay círculo: está en tu mapa. Los Jefes ya no salen en los contratos normales.
 - Los contratos del Bounty Board llegan como **ofertas**: abre el contrato y pulsa **ACEPTAR CONTRATO** (o F) para tomarlo. Hasta 3 contratos aceptados y 3 ofertas pendientes a la vez. Solo cobran los contratos aceptados: si eliminas al objetivo de una oferta que no aceptaste, pierdes el contrato. Las ofertas vencen igual que los contratos.
 - Los contratos también dan **XP** (Soldado 350, Teniente 650, Jefe 1.000, +50 por escape, hasta +250) y algo de **Street Cred**.
 - Los Intel Shards también revelan un rasgo oculto de uno de los Némesis de la banda, empezando por el de mayor rango.
 - El escáner muestra los rasgos del Némesis en su propia sección RASGOS.
 - Todo Némesis que cae, noqueado o muerto, ahora lleva un Shard de intel.
+- Una rara sorpresa de Rogue: de vez en cuando uno de sus contratos viene marcado como **ESPECIAL**. Completa todos los opcionales y ella tiene algo para ti.
+
+## [1.4.10] - 2026-11-19
+
+### English
+
+#### Changed
+- **Nemesis detail card now scrolls.** A nemesis with a lot of traits no longer spills past the card's bottom edge - the card scrolls (mouse wheel, gamepad, or a draggable bar) below the name and title.
+- **Fallen roster improvements.** Fallen cards are now tall enough to show the cause of death without it running past the card. Click any fallen nemesis to see their full info in the side panel, same as a living one. The "+N" count is now a button that expands the full fallen list with a horizontal scrollbar.
+
+### Español
+
+#### Cambiado
+- **La ficha de un Némesis ahora tiene scroll.** Un Némesis con muchos rasgos ya no se sale por debajo de la ficha - ahora se puede desplazar (rueda del mouse, mando o una barra arrastrable) debajo del nombre y el título.
+- **Mejoras en los caídos.** Las fichas de caídos ahora son más altas para que la causa de muerte no se salga de la ficha. Hacé clic en cualquier caído para ver su información completa en el panel lateral, igual que uno vivo. El contador "+N" ahora es un botón que despliega la lista completa de caídos con una barra de desplazamiento horizontal.
+
+Thanks to **RedFalcon** for all of this work. / Gracias a **RedFalcon** por todo este trabajo.
 
 ## [1.4.9] - 2026-11-18
 

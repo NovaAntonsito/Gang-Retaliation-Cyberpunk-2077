@@ -54,6 +54,11 @@ public class GRPhone extends ScriptableSystem {
         return IsDefined(journal.GetEntryByString("contacts/" + contactId + "/" + conversationId + "/sms_01", "gameJournalPhoneMessage"));
     }
 
+    public func HasSlot(contactId: String, conversationId: String, slot: Int32) -> Bool {
+        let journal: ref<JournalManager> = GameInstance.GetJournalManager(this.GetGameInstance());
+        return IsDefined(journal.GetEntryByString("contacts/" + contactId + "/" + conversationId + "/sms_" + GRPhone.Pad(slot), "gameJournalPhoneMessage"));
+    }
+
     public func NextSlot(contactId: String, conversationId: String, first: Int32, last: Int32) -> Int32 {
         let journal: ref<JournalManager> = GameInstance.GetJournalManager(this.GetGameInstance());
         let thread: String = "contacts/" + contactId + "/" + conversationId + "/sms_";
@@ -120,11 +125,19 @@ public class GRPhone extends ScriptableSystem {
             journal.ChangeEntryState(contact, "gameJournalContact", gameJournalEntryState.Active, JournalNotifyOption.DoNotNotify);
         }
         journal.ChangeEntryState(conversation, "gameJournalPhoneConversation", gameJournalEntryState.Active, JournalNotifyOption.DoNotNotify);
+        // Force a genuine Inactive->Active transition rather than setting Active directly - if the entry's
+        // underlying state already reads Active (e.g. a reused slot, or just not a fresh transition), the
+        // native UI doesn't register it as new. Matches Virtual Atelier Delivery's shipped
+        // NotifyAboutLastHistoryItem(), which does the same Inactive-then-Active toggle.
+        journal.ChangeEntryState(path, "gameJournalPhoneMessage", gameJournalEntryState.Inactive, JournalNotifyOption.DoNotNotify);
+        journal.ChangeEntryState(path, "gameJournalPhoneMessage", gameJournalEntryState.Active, JournalNotifyOption.Notify);
+        // gameJournalEntryState has no "unread" value of its own - read/unread is a separate flag,
+        // JournalManager.SetEntryVisited(entry, Bool). Re-fetch the entry now that it's Active and
+        // explicitly mark it unvisited (RedFalcon 2026-11-21: confirmed in game).
         let entry: wref<JournalEntry> = journal.GetEntryByString(path, "gameJournalPhoneMessage");
         if IsDefined(entry) {
             journal.SetEntryVisited(entry, false);
         }
-        journal.ChangeEntryState(path, "gameJournalPhoneMessage", gameJournalEntryState.Active, JournalNotifyOption.Notify);
     }
 
     public static func Pad(i: Int32) -> String {

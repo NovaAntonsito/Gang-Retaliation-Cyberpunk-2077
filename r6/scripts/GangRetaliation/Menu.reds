@@ -380,6 +380,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return new HDRColor(1.1192, 0.8441, 0.2565, 1.0);
     }
 
+    // Magenta: etiqueta y linea del contrato ESPECIAL de Rogue (distinto del dorado del dinero y de las etiquetas de estado).
+    private func Special() -> HDRColor {
+        return new HDRColor(1.1, 0.42, 0.95, 1.0);
+    }
+
     private func Grey() -> HDRColor {
         return new HDRColor(0.76, 0.76, 0.84, 1.0);
     }
@@ -3986,6 +3991,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             stateTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
             stateTag.Reparent(tags);
         }
+        if c.special && GRBounties.IsOpenState(c.state) {
+            let specialTag: ref<inkCompoundWidget> = this.NewTag(this.Up(this.T("GR-BountySpecialTag")), 22, this.Special());
+            specialTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
+            specialTag.Reparent(tags);
+        }
 
         let name: ref<inkText> = this.NewText(this.BountyName(entry), 48, c.state == 2 ? this.Grey() : color, n"Bold");
         name.SetMargin(new inkMargin(0.0, 6.0, 0.0, 0.0));
@@ -4076,7 +4086,9 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     private func FillBountyDetail(c: ref<GRBounty>) {
+        let header: ref<inkVerticalPanel> = this.m_detailHeader;
         let panel: ref<inkVerticalPanel> = this.m_detailContent;
+        header.RemoveAllChildren();
         panel.RemoveAllChildren();
         if !IsDefined(c) {
             this.m_detail.SetVisible(false);
@@ -4090,16 +4102,15 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let fixer: String = GRBounties.FixerName(c.fixer);
         let name: String = this.BountyName(entry);
 
-        this.NewText(this.Up(this.T("GR-BountyContract")) + "  |  " + this.Up(fixer + " · " + this.T("GR-BountyDistrict-" + IntToString(c.fixer))), 28, this.Cyan(), n"Bold").Reparent(panel);
+        // Same split as FillDetail: contract line, name and title go in the fixed header (above the
+        // divider CreateDetail draws); everything else scrolls inside the RedFalcon scroll area.
+        this.NewText(this.Up(this.T("GR-BountyContract")) + "  |  " + this.Up(fixer + " · " + this.T("GR-BountyDistrict-" + IntToString(c.fixer))), 28, this.Cyan(), n"Bold").Reparent(header);
         let title: ref<inkText> = this.NewWrappedText(name, 66, c.state == 2 ? this.Grey() : color, width);
         title.SetFontStyle(n"Bold");
-        title.Reparent(panel);
+        title.Reparent(header);
         if IsDefined(entry) && StrLen(entry.title) > 0 {
-            this.NewText("\"" + entry.title + "\"", 42, this.Light(), n"Regular").Reparent(panel);
+            this.NewText("\"" + entry.title + "\"", 42, this.Light(), n"Regular").Reparent(header);
         }
-        let rule: ref<inkRectangle> = this.NewRect(width, 2.0, this.Dim(), 1.0);
-        rule.SetMargin(new inkMargin(0.0, 20.0, 0.0, 20.0));
-        rule.Reparent(panel);
 
         let rankRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
         rankRow.Reparent(panel);
@@ -4112,6 +4123,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         if IsDefined(stateTag) {
             stateTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
             stateTag.Reparent(rankRow);
+        }
+        if c.special && GRBounties.IsOpenState(c.state) {
+            let specialTag: ref<inkCompoundWidget> = this.NewTag(this.Up(this.T("GR-BountySpecialTag")), 22, this.Special());
+            specialTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
+            specialTag.Reparent(rankRow);
         }
 
         let msgRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
@@ -4170,6 +4186,12 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             let zoneText: ref<inkText> = this.NewWrappedText(StrReplaceAll(this.T("GR-BountyZoneHint-" + IntToString(c.zone)), "{name}", name), 30, this.Cyan(), width);
             zoneText.SetMargin(new inkMargin(0.0, 8.0, 0.0, 0.0));
             zoneText.Reparent(panel);
+        }
+        if c.special && GRBounties.IsOpenState(c.state) {
+            let specialText: ref<inkText> = this.NewWrappedText(this.T("GR-BountySpecialLine") + (c.bonusUsed ? "  " + this.Up(this.T("GR-BountyBonusDone")) : ""), 30, this.Special(), width);
+            specialText.SetFontStyle(n"Bold");
+            specialText.SetMargin(new inkMargin(0.0, 10.0, 0.0, 0.0));
+            specialText.Reparent(panel);
         }
 
         if c.bonus > 0 {
