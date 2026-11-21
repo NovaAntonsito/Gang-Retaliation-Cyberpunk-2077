@@ -1088,7 +1088,31 @@ local function processReveals()
 
     for i = 0, count - 1 do
         local id, what = string.match(sys:GetReveal(i) or "", "^(%d+):(.+)$")
-        local n = id and findNemesis(tonumber(id))
+        local gang = id == "0" and string.match(what, "^intel:(.+)$")
+        local n = id and not gang and findNemesis(tonumber(id))
+        if gang then
+            local best, pool = 0, {}
+            for _, c in ipairs(Store.campaign(GR.campaignId).nemeses) do
+                local hidden = {}
+                for _, t in ipairs(c.traits or {}) do if not t.revealed then table.insert(hidden, t) end end
+                local rank = c.rank or 1
+                if c.gang == gang and c.status ~= "dead" and #hidden > 0 and rank >= best then
+                    if rank > best then best, pool = rank, {} end
+                    table.insert(pool, { n = c, hidden = hidden })
+                end
+            end
+            local pick = pool[1] and pool[math.random(#pool)]
+            if pick then
+                local t = pick.hidden[math.random(#pick.hidden)]
+                t.revealed = true
+                Store.dirty = true
+                local weak = Traits.isWeakness(t.key)
+                notify(string.format(text(weak and "GR-MsgIntelWeak" or "GR-MsgIntelStrong", weak and "Intel on %s - weakness: %s" or "Intel on %s - strength: %s"), fullName(pick.n), traitName(t.key)))
+                print(string.format("[GangRetaliation] Intel: shard revela rasgo %s de Nemesis #%s (%s, %s)", t.key, tostring(pick.n.id), gang, ({ "Soldado", "Teniente", "Jefe" })[best] or "?"))
+            else
+                print("[GangRetaliation] Intel: shard sin rasgos por revelar (" .. gang .. ")")
+            end
+        end
         if n then
             if what == "scan" then
                 if Traits.revealAll(n) then

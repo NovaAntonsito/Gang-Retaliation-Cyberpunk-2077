@@ -27,6 +27,8 @@ public class GRStronghold extends ScriptableSystem {
     private let m_candKnown: array<Bool>;
     private let m_candBad: array<Bool>;
     private let m_candFound: Int32;
+    // Puntos de caza descartados por estar bajo tierra/cubiertos (solo esta sesion; se vuelven a descubrir con el rayo).
+    private let m_coverPos: array<Vector4>;
 
     private let m_questPos: array<Vector4>;
     private let m_safePos: array<Vector4>;
@@ -75,6 +77,13 @@ public class GRStronghold extends ScriptableSystem {
     private let m_fillStats: array<Int32>;
 
     private let m_events: array<String>;
+
+    // Caza del Bounty Board: m_hunt = Nemesis del contrato cuando el grupo activo es una caza (0 = guarida).
+    private let m_hunt: Int32;
+    private let m_huntWait: Int32;
+    private let m_huntLog: String;
+    // Origen del spawn: Nemesis que aparecieron en su guarida en esta activacion (contratos de Jefe "en su guarida").
+    private let m_origins: array<Int32>;
 
     private persistent let m_mapFilterSeeded: Bool;
     private let m_mapCustom: Bool;
@@ -309,6 +318,168 @@ public class GRStronghold extends ScriptableSystem {
         return this.GetSiteMemberCount(site) > 0;
     }
 
+    public func GetGangSitePosition(gang: String) -> Vector4 {
+        let site: Int32 = this.FindSite(gang);
+        if site < 0 {
+            return Vector4.EmptyVector();
+        }
+        return this.m_sitePos[site];
+    }
+
+    public func IsLairMember(nemesisId: Int32) -> Bool {
+        return nemesisId > 0 && ArrayContains(this.m_ids, nemesisId);
+    }
+
+    public func SpawnedInLair(nemesisId: Int32) -> Bool {
+        return nemesisId > 0 && ArrayContains(this.m_origins, nemesisId);
+    }
+
+    public func GetHuntId() -> Int32 {
+        return this.m_active ? this.m_hunt : 0;
+    }
+
+    // Punto real para la zona de caza de un contrato: un POI de la banda (outpost/gangwatch) que no sea la guarida actual,
+    // sin mision ni zona segura cerca. Si no hay, el sitio fijo de la banda si la guarida se mudo. Vacio = sin punto.
+    // Cada candidato (y el sitio fijo) se valida contra la SUPERFICIE: si hay una superficie a mas de 6 m por encima del POI esta bajo tierra/cubierto y se descarta.
+    // Sin datos de colision (POI lejano, sin streamear) NO se descarta; validated = true solo si el rayo dio datos con V a <= 150 m (si no, GRBounties lo revalida a < 200 m).
+    // Devuelve la posicion del POI (Z original); surfaceZ = superficie mas alta medida (0 si no hay datos); useZ = Z a usar para pin y spawn (la del suelo si validated).
+    public func PickHuntSpot(gang: String, nemesisId: Int32, out validated: Bool, out surfaceZ: Float, out useZ: Float) -> Vector4 {
+        validated = false;
+        surfaceZ = 0.0;
+        useZ = 0.0;
+        let site: Int32 = this.FindSite(gang);
+        this.ScanMappins();
+        let lair: Vector4 = site >= 0 ? this.m_sitePos[site] : Vector4.EmptyVector();
+        let good: array<Int32>;
+        let loose: array<Int32>;
+        let i: Int32 = 0;
+        while i < this.m_candCount {
+            if Equals(this.m_candGangs[i], gang) && this.m_candKnown[i] && !this.m_candBad[i] && !this.IsCovered(this.m_candPos[i]) {
+                let pos: Vector4 = this.m_candPos[i];
+                if site < 0 || Vector4.Distance2D(pos, lair) > 150.0 {
+                    if !this.IsNearOtherSite(-1, pos, 150.0) && !this.IsNearMappin(true, pos, 150.0) && !this.IsNearMappin(false, pos, 60.0) {
+                        ArrayPush(good, i);
+                    } else {
+                        ArrayPush(loose, i);
+                    }
+                }
+            }
+            i += 1;
+        }
+        let goodCount: Int32 = ArraySize(good);
+        let looseCount: Int32 = ArraySize(loose);
+        let label: String = "";
+        let cand: Int32 = -1;
+        let covered: Int32 = 0;
+        let verdict: Int32 = 0;
+        while cand < 0 && ArraySize(good) > 0 {
+            let pick: Int32 = Min(RandRange(0, ArraySize(good)), ArraySize(good) - 1);
+            let idx: Int32 = good[pick];
+            ArrayErase(good, pick);
+            verdict = this.SurfaceVerdict(nemesisId, this.m_candPos[idx], this.m_candIds[idx], validated, surfaceZ, useZ);
+            if verdict == 2 {
+                covered += 1;
+            } else {
+                cand = idx;
+            }
+        }
+        while cand < 0 && ArraySize(loose) > 0 {
+            let pick2: Int32 = Min(RandRange(0, ArraySize(loose)), ArraySize(loose) - 1);
+            let idx2: Int32 = loose[pick2];
+            ArrayErase(loose, pick2);
+            verdict = this.SurfaceVerdict(nemesisId, this.m_candPos[idx2], this.m_candIds[idx2], validated, surfaceZ, useZ);
+            if verdict == 2 {
+                covered += 1;
+            } else {
+                cand = idx2;
+                label = " (cerca de una mision o zona segura: no habia otro)";
+            }
+        }
+        if cand >= 0 {
+            GRLog("Caza #" + IntToString(nemesisId) + " (" + gang + "): punto en " + this.m_candIds[cand] + label + " | " + IntToString(goodCount) + " validos, "
+                + IntToString(looseCount) + " de reserva, " + IntToString(covered) + " descartados (bajo tierra/cubierto)");
+            this.LogSurface(nemesisId, this.m_candPos[cand], verdict, validated, surfaceZ, useZ);
+            return this.m_candPos[cand];
+        }
+        if site >= 0 && Vector4.Distance2D(this.m_siteFixed[site], lair) > 150.0 && !this.IsCovered(this.m_siteFixed[site]) {
+            verdict = this.SurfaceVerdict(nemesisId, this.m_siteFixed[site], "sitio fijo", validated, surfaceZ, useZ);
+            if verdict != 2 {
+                GRLog("Caza #" + IntToString(nemesisId) + " (" + gang + "): sin POI de la banda con posicion, punto en su sitio fijo (la guarida se mudo) | "
+                    + IntToString(covered) + " POI descartados (bajo tierra/cubierto)");
+                this.LogSurface(nemesisId, this.m_siteFixed[site], verdict, validated, surfaceZ, useZ);
+                return this.m_siteFixed[site];
+            }
+        }
+        validated = false;
+        return Vector4.EmptyVector();
+    }
+
+    private func IsCovered(pos: Vector4) -> Bool {
+        for covered in this.m_coverPos {
+            if Vector4.Distance2D(covered, pos) < 2.0 {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Evalua un punto contra la superficie. Si esta cubierto lo anota (no se vuelve a elegir) y deja el log. Devuelve 0 sin datos, 1 en superficie, 2 cubierto.
+    // validated/surfaceZ/useZ quedan para el ultimo punto evaluado.
+    private func SurfaceVerdict(nemesisId: Int32, pos: Vector4, label: String, out validated: Bool, out surfaceZ: Float, out useZ: Float) -> Int32 {
+        let top: Float = 0.0;
+        let floorZ: Float = pos.Z;
+        validated = false;
+        surfaceZ = 0.0;
+        useZ = pos.Z;
+        let verdict: Int32 = GRSurfaceCheck(this.GetGameInstance(), pos, top, floorZ);
+        if verdict == 0 {
+            return 0;
+        }
+        surfaceZ = top;
+        if verdict == 2 {
+            this.MarkCovered(pos);
+            GRLog("Caza #" + IntToString(nemesisId) + ": POI " + label + " cubierto (superficie Z=" + FloatToStringPrec(top, 1) + ", POI Z=" + FloatToStringPrec(pos.Z, 1) + "), descartado");
+            return 2;
+        }
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if IsDefined(player) && Vector4.Distance2D(player.GetWorldPosition(), pos) <= 150.0 {
+            validated = true;
+            useZ = floorZ;
+        }
+        return 1;
+    }
+
+    private func LogSurface(nemesisId: Int32, pos: Vector4, verdict: Int32, validated: Bool, surfaceZ: Float, useZ: Float) {
+        if validated {
+            GRLog("Caza #" + IntToString(nemesisId) + ": punto validado en superficie (Z=" + FloatToStringPrec(useZ, 1) + ", superficie mas alta " + FloatToStringPrec(surfaceZ, 1)
+                + ", POI Z=" + FloatToStringPrec(pos.Z, 1) + ")");
+        } else if verdict == 1 {
+            GRLog("Caza #" + IntToString(nemesisId) + ": punto sin validar (hay colision pero V esta a mas de 150 m), se revalida a < 200 m");
+        } else {
+            GRLog("Caza #" + IntToString(nemesisId) + ": punto sin validar (sin colision cargada en el POI), se revalida cuando V este a < 200 m");
+        }
+    }
+
+    // Lo usa GRBounties al revalidar de cerca: anota el punto como cubierto para que PickHuntSpot no lo vuelva a elegir.
+    public func MarkCovered(pos: Vector4) {
+        if !this.IsCovered(pos) {
+            ArrayPush(this.m_coverPos, pos);
+        }
+    }
+
+    // Id del POI candidato en esa posicion (para los logs), o "sitio fijo".
+    public func CandidateLabel(pos: Vector4) -> String {
+        this.EnsureCandidates();
+        let i: Int32 = 0;
+        while i < this.m_candCount {
+            if this.m_candKnown[i] && Vector4.Distance2D(this.m_candPos[i], pos) < 2.0 {
+                return this.m_candIds[i];
+            }
+            i += 1;
+        }
+        return "(sitio fijo)";
+    }
+
     public func IsActive() -> Bool {
         return this.m_active;
     }
@@ -402,6 +573,15 @@ public class GRStronghold extends ScriptableSystem {
         }
         let pos: Vector4 = this.m_sitePos[site];
         pos.Z += 0.5;
+        // Solo con suelo comprobado en el destino (si la zona no esta cargada, V caeria bajo el mapa): si no hay, no se mueve a V.
+        let groundZ: Float = 0.0;
+        let here: Vector4 = player.GetWorldPosition();
+        if !GRGroundBetween(this.GetGameInstance(), pos.X, pos.Y, pos.Z + 4.0, pos.Z - 40.0, groundZ) {
+            GRLog("Guarida: DevTeleport a " + gang + " cancelado: sin suelo cargado en " + IntToString(Cast<Int32>(pos.X)) + "," + IntToString(Cast<Int32>(pos.Y)) + " (a "
+                + IntToString(Cast<Int32>(Vector4.Distance2D(here, pos))) + " m de V), V no se movio");
+            return false;
+        }
+        pos.Z = groundZ + 0.5;
         GameInstance.GetTeleportationFacility(this.GetGameInstance()).Teleport(player, pos, Vector4.ToRotation(player.GetWorldForward()));
         return true;
     }
@@ -1097,6 +1277,19 @@ public class GRStronghold extends ScriptableSystem {
                     return;
                 }
             }
+            if this.m_hunt > 0 {
+                if !this.m_populating && !this.m_cleared && spawner.CountStanding() == 0 {
+                    this.m_cleared = true;
+                    GRLog(this.ActiveLabel() + ": no queda nadie en pie");
+                }
+                if Vector4.Distance2D(player.GetWorldPosition(), this.m_activePos) > 250.0 && !player.IsInCombat() {
+                    GRLog(this.ActiveLabel() + ": V se fue (>250 m, fuera de combate), se recogen; vuelven si V regresa con el contrato abierto");
+                    spawner.DespawnAll();
+                    this.m_active = false;
+                    this.StopPopulating();
+                }
+                return;
+            }
             if !this.m_populating && !this.m_cleared && spawner.CountStanding() == 0 {
                 this.m_cleared = true;
                 ArrayPush(this.m_events, "cleared:" + gang);
@@ -1117,6 +1310,10 @@ public class GRStronghold extends ScriptableSystem {
                 ArrayPush(this.m_events, "left:" + gang);
                 this.Log("Guarida (" + gang + "): V se fue, se recogen");
             }
+            return;
+        }
+
+        if this.TryHunt(spawner, player) {
             return;
         }
 
@@ -1161,11 +1358,137 @@ public class GRStronghold extends ScriptableSystem {
     private func StopPopulating() {
         ArrayClear(this.m_pending);
         this.m_populating = false;
+        this.m_hunt = 0;
+        ArrayClear(this.m_origins);
+    }
+
+    private func ActiveLabel() -> String {
+        let gang: String = this.GetSiteGang(this.m_activeSite);
+        if this.m_hunt > 0 {
+            return "Caza #" + IntToString(this.m_hunt) + " (" + gang + ")";
+        }
+        return "Guarida (" + gang + ")";
+    }
+
+    // Zona de caza del Bounty Board: si V esta a menos de 90 m del punto real de un contrato aceptado,
+    // aparecen el Nemesis y 2-3 escoltas ahi (mismo relleno de puestos que la guarida, sin Lua).
+    private func TryHunt(spawner: ref<GRSpawner>, player: ref<PlayerPuppet>) -> Bool {
+        if this.m_huntWait > 0 {
+            this.m_huntWait -= 1;
+            return false;
+        }
+        let bounties: ref<GRBounties> = GRBounties.Get(this.GetGameInstance());
+        if !IsDefined(bounties) {
+            return false;
+        }
+        let nemesisId: Int32 = 0;
+        let spot: Vector4;
+        // Antes de poder aparecer: los puntos de caza sin validar a < 200 m de V se revalidan contra la superficie (si estan cubiertos, la zona se muda).
+        bounties.CheckHuntSurface(player.GetWorldPosition());
+        if !bounties.NearestHunt(player.GetWorldPosition(), GRBounties.HuntSpawnDistance(), nemesisId, spot) {
+            this.m_huntLog = "";
+            return false;
+        }
+        let blocker: String = spawner.GetAmbushBlocker();
+        if StrLen(blocker) == 0 && spawner.IsNemesisSpawned(nemesisId) {
+            blocker = "el Nemesis ya esta en el mundo";
+        }
+        let member: Int32 = ArrayFindFirst(this.m_ids, nemesisId);
+        if StrLen(blocker) == 0 && member < 0 {
+            blocker = "no esta entre los miembros vivos de su banda (sin record)";
+        }
+        if StrLen(blocker) > 0 {
+            let key: String = IntToString(nemesisId) + ":" + blocker;
+            if NotEquals(this.m_huntLog, key) {
+                this.m_huntLog = key;
+                GRLog("Caza #" + IntToString(nemesisId) + ": V a " + IntToString(Cast<Int32>(Vector4.Distance2D(player.GetWorldPosition(), spot))) + " m del punto, espera ("
+                    + blocker + ")");
+            }
+            return false;
+        }
+        this.m_huntLog = "";
+        return this.BeginHunt(spawner, player, member, nemesisId, spot);
+    }
+
+    private func HuntCenter(spawner: ref<GRSpawner>, spot: Vector4) -> Vector4 {
+        let nav: ref<NavigationSystem> = GameInstance.GetNavigationSystem(this.GetGameInstance());
+        let radii: array<Float> = [0.0, 6.0, 12.0, 20.0, 30.0];
+        for radius in radii {
+            let k: Int32 = 0;
+            let steps: Int32 = radius > 0.0 ? 6 : 1;
+            while k < steps {
+                let angle: Float = 2.0 * Pi() * Cast<Float>(k) / Cast<Float>(steps);
+                let raw: Vector4 = spot + new Vector4(CosF(angle) * radius, SinF(angle) * radius, 2.0, 0.0);
+                let pos: Vector4 = nav.GetNearestNavmeshPointBelowOnlyHumanNavmesh(raw, 3.0, 6);
+                if !Vector4.IsZero(pos) && AbsF(pos.Z - spot.Z) < 6.0 && spawner.IsClearSpot(pos) {
+                    pos.W = 1.0;
+                    return pos;
+                }
+                k += 1;
+            }
+        }
+        return Vector4.EmptyVector();
+    }
+
+    private func BeginHunt(spawner: ref<GRSpawner>, player: ref<PlayerPuppet>, member: Int32, nemesisId: Int32, spot: Vector4) -> Bool {
+        let site: Int32 = this.m_memberSites[member];
+        let gang: String = this.m_siteGangs[site];
+        let center: Vector4 = this.HuntCenter(spawner, spot);
+        if Vector4.IsZero(center) {
+            this.m_huntWait = 10;
+            GRLog("Caza #" + IntToString(nemesisId) + " (" + gang + "): sin navmesh libre a menos de 30 m del punto (" + FloatToStringPrec(spot.X, 1) + ", "
+                + FloatToStringPrec(spot.Y, 1) + ", " + FloatToStringPrec(spot.Z, 1) + "), reintenta en 10 s");
+            return false;
+        }
+        ArrayClear(this.m_pending);
+        let leader: ref<GRPendingPost> = new GRPendingPost();
+        leader.nemesisId = nemesisId;
+        leader.record = this.m_records[member];
+        leader.appearance = this.m_appearances[member];
+        leader.speaker = this.m_speakers[member];
+        leader.angle = 0.0;
+        leader.radius = 0.0;
+        ArrayPush(this.m_pending, leader);
+        let guards: array<String>;
+        let records: String = this.m_siteGuards[site];
+        if StrLen(records) > 0 {
+            guards = StrSplit(records, ",");
+        }
+        let escorts: Int32 = Min(RandRange(2, 4), ArraySize(guards));
+        let start: Int32 = ArraySize(guards) > 0 ? RandRange(0, ArraySize(guards)) : 0;
+        let k: Int32 = 0;
+        while k < escorts {
+            let escort: ref<GRPendingPost> = new GRPendingPost();
+            escort.record = guards[(start + k) % ArraySize(guards)];
+            escort.angle = 2.0 * Pi() * Cast<Float>(k) / Cast<Float>(Max(escorts, 1)) + RandRangeF(-0.3, 0.3);
+            escort.radius = RandRangeF(3.0, 6.0);
+            ArrayPush(this.m_pending, escort);
+            k += 1;
+        }
+        spawner.BeginStronghold();
+        this.m_active = true;
+        this.m_activeSite = site;
+        this.m_activePos = center;
+        this.m_hunt = nemesisId;
+        ArrayClear(this.m_origins);
+        this.m_cleared = false;
+        this.m_populating = true;
+        this.m_announced = false;
+        this.m_fillTicks = 0;
+        this.m_placed = 0;
+        this.m_failed = 0;
+        this.m_fillStats = [0, 0, 0, 0, 0];
+        GRLog(this.ActiveLabel() + ": V a " + IntToString(Cast<Int32>(Vector4.Distance2D(player.GetWorldPosition(), center))) + " m del punto de caza, Nemesis + "
+            + IntToString(escorts) + " escoltas (centro ajustado " + FloatToStringPrec(Vector4.Distance2D(center, spot), 1) + " m)");
+        this.FillPosts(spawner, player);
+        return true;
     }
 
     private func BeginPopulate(spawner: ref<GRSpawner>, player: ref<PlayerPuppet>, site: Int32) {
         let gang: String = this.m_siteGangs[site];
         ArrayClear(this.m_pending);
+        ArrayClear(this.m_origins);
+        this.m_hunt = 0;
         let slot: Int32 = 0;
         let i: Int32 = 0;
         while i < ArraySize(this.m_ids) {
@@ -1269,10 +1592,13 @@ public class GRStronghold extends ScriptableSystem {
                     if spawner.SpawnPosted(post.nemesisId, post.record, post.appearance, spawnPos, center, post.speaker) {
                         this.m_placed += 1;
                         spawnedNow += 1;
+                        if post.nemesisId > 0 && this.m_hunt == 0 && !ArrayContains(this.m_origins, post.nemesisId) {
+                            ArrayPush(this.m_origins, post.nemesisId);
+                        }
                         if snap {
                             this.m_fillStats[4] += 1;
                             if AbsF(drop) > 0.3 {
-                                this.Log("Guarida (" + gang + "): puesto con el navmesh a " + FloatToStringPrec(drop, 2) + " m del suelo real (Z "
+                                GRLog(this.ActiveLabel() + ": puesto con el navmesh a " + FloatToStringPrec(drop, 2) + " m del suelo real (Z "
                                     + FloatToStringPrec(post.pos.Z, 2) + " -> " + FloatToStringPrec(groundZ, 2) + "): aparece en el suelo");
                             }
                         }
@@ -1303,11 +1629,13 @@ public class GRStronghold extends ScriptableSystem {
         }
         if this.m_placed > 0 && !this.m_announced {
             this.m_announced = true;
-            ArrayPush(this.m_events, "spawned:" + gang);
-            this.MarkLocated(gang, "V llego a la guarida");
+            if this.m_hunt == 0 {
+                ArrayPush(this.m_events, "spawned:" + gang);
+                this.MarkLocated(gang, "V llego a la guarida");
+            }
         }
         if this.m_fillTicks == 1 {
-            this.Log("Guarida (" + gang + "): primer intento, " + IntToString(spawnedNow) + " aparecen, " + IntToString(waitGround)
+            GRLog(this.ActiveLabel() + ": primer intento, " + IntToString(spawnedNow) + " aparecen, " + IntToString(waitGround)
                 + " esperan suelo, " + IntToString(waitSight) + " esperan a que V no mire, " + IntToString(waitSpot) + " sin sitio todavia");
         }
         if ArraySize(this.m_pending) > 0 {
@@ -1315,12 +1643,16 @@ public class GRStronghold extends ScriptableSystem {
         }
         this.m_populating = false;
         if this.m_placed == 0 {
+            GRLog(this.ActiveLabel() + ": sin puestos validos en el navmesh");
+            if this.m_hunt > 0 {
+                this.m_huntWait = 30;
+            }
             spawner.DespawnAll();
             this.m_active = false;
-            this.Log("Guarida (" + gang + "): sin puestos validos en el navmesh");
+            this.StopPopulating();
             return;
         }
-        this.Log("Guarida (" + gang + "): " + IntToString(this.m_placed) + " en sus puestos, " + IntToString(this.m_failed) + " sin sitio, en "
+        GRLog(this.ActiveLabel() + ": " + IntToString(this.m_placed) + " en sus puestos, " + IntToString(this.m_failed) + " sin sitio, en "
             + IntToString(this.m_fillTicks) + " s | esperaron suelo " + IntToString(this.m_fillStats[0]) + " (" + IntToString(this.m_fillStats[1])
             + " aparecieron sin suelo) | esperaron a que V no mire " + IntToString(this.m_fillStats[2]) + " (" + IntToString(this.m_fillStats[3])
             + " aparecieron a la vista) | bajados al suelo " + IntToString(this.m_fillStats[4]));
@@ -1429,7 +1761,117 @@ public func GRApplyMappinIcon(mappin: wref<IMappin>, icon: inkImageRef, view: In
     if IsDefined(stronghold) {
         inkImageRef.SetTexturePart(icon, GRStrongholdMappinData.IconPart());
         stronghold.LogOnce(view);
+        return;
     }
+    let zone: wref<GRBountyZoneMappinData> = data as GRBountyZoneMappinData;
+    if IsDefined(zone) {
+        inkImageRef.SetTexturePart(icon, zone.IconPart());
+        zone.LogOnce(view);
+        return;
+    }
+    // Diagnostico: el mappin del circulo del minimapa cayo en un controlador POI/mapa (en vez de MinimapDeviceMappinController).
+    let circle: wref<GRZoneCircleData> = data as GRZoneCircleData;
+    if IsDefined(circle) {
+        circle.poiHit += 1;
+        if circle.poiHit == 1 {
+            GRLog("Zona #" + IntToString(circle.nemesisId) + ": ERROR el mappin del circulo cayo en un controlador POI/mapa (vista " + IntToString(view) + "), no en MinimapDeviceMappinController");
+        }
+    }
+}
+
+// Circulo del minimapa: MinimapDeviceMappinController dibuja el circulo (SetEffectAreaRadius) en Update. Aca solo se loguea cuando se crea/actualiza
+// el controlador para el mappin del circulo de la zona (una vez), y se cuentan las actualizaciones (DevZoneInfo).
+@wrapMethod(MinimapDeviceMappinController)
+protected func Update() -> Void {
+    wrappedMethod();
+    let mappin: wref<IMappin> = this.GetMappin();
+    if !IsDefined(mappin) {
+        return;
+    }
+    let circle: wref<GRZoneCircleData> = mappin.GetScriptData() as GRZoneCircleData;
+    if IsDefined(circle) {
+        circle.updates += 1;
+        if circle.updates == 1 {
+            GRLog("Zona #" + IntToString(circle.nemesisId) + ": MinimapDeviceMappinController creado para el circulo (m_range=" + IntToString(Cast<Int32>(circle.m_range))
+                + " m, showOnMiniMap=" + GRGigZone.Flag(circle.m_showOnMiniMap) + ", currentTarget=" + GRGigZone.Flag(circle.m_isCurrentTarget) + ")");
+        }
+        this.GRApplyCircleColor(circle);
+    }
+}
+
+// Color del circulo segun GRZoneCircleData.colorMode (ver GRBounties.ZoneColorModeName). El tintColor del widget effectArea esta ENLAZADO al estilo
+// "Mappin.AreaColor" (blanco): se re-enlaza a MainColors.ActiveYellow dentro de la zona (BindProperty, como hace el juego) y ademas se fija el valor con
+// SetTintColor. Se reaplica en cada Update mientras V esta adentro; al salir se vuelve al binding y tinte originales.
+@addMethod(MinimapDeviceMappinController)
+private func GRApplyCircleColor(circle: wref<GRZoneCircleData>) -> Void {
+    let mode: Int32 = circle.colorMode;
+    let widget: wref<inkWidget> = inkWidgetRef.Get(this.effectAreaWidget);
+    let root: wref<inkWidget> = this.GetRootWidget();
+    if !circle.hasBase {
+        circle.baseTint = inkWidgetRef.GetTintColor(this.effectAreaWidget);
+        circle.hasBase = true;
+        GRLog("Zona #" + IntToString(circle.nemesisId) + ": tinte base del circulo r" + FloatToStringPrec(circle.baseTint.Red, 2) + " g" + FloatToStringPrec(circle.baseTint.Green, 2)
+            + " b" + FloatToStringPrec(circle.baseTint.Blue, 2) + " a" + FloatToStringPrec(circle.baseTint.Alpha, 2) + " (widget " + (IsDefined(widget) ? "ok" : "NULO") + ")");
+    }
+    let want: Bool = circle.inside && mode > 0 && mode != 4;
+    // Limpieza: salio de la zona, o DevZoneColorMode cambio el modo (se deshace lo del modo anterior).
+    if (circle.tinted || circle.rootTinted) && (!want || circle.colorDirty) {
+        if IsDefined(widget) {
+            widget.BindProperty(n"tintColor", GRBounties.ZoneCircleBaseStyle());
+        }
+        inkWidgetRef.SetTintColor(this.effectAreaWidget, circle.baseTint);
+        if circle.rootTinted && IsDefined(root) {
+            root.SetTintColor(new HDRColor(1.0, 1.0, 1.0, 1.0));
+        }
+        circle.tinted = false;
+        circle.rootTinted = false;
+        GRLog("Zona #" + IntToString(circle.nemesisId) + ": color del circulo restaurado");
+    }
+    circle.colorDirty = false;
+    if !want {
+        return;
+    }
+    let first: Bool = !circle.tinted;
+    if GRZoneCircleData.UsesBind(mode) && IsDefined(widget) {
+        widget.BindProperty(n"tintColor", GRBounties.ZoneCircleInsideStyle());
+    }
+    if GRZoneCircleData.UsesTint(mode) {
+        inkWidgetRef.SetTintColor(this.effectAreaWidget, GRBounties.ZoneCircleInsideColor());
+    }
+    if mode == 6 && IsDefined(root) {
+        root.SetTintColor(GRBounties.ZoneCircleInsideColor());
+        circle.rootTinted = true;
+    }
+    circle.tinted = true;
+    if first {
+        GRLog("Zona #" + IntToString(circle.nemesisId) + ": color del circulo aplicado (modo " + GRBounties.ZoneColorModeName(mode) + ")");
+    }
+}
+
+// El mappin del circulo usa la definicion del juego (showInWorld=true), asi que el mundo 3D le crea un icono ("i 58M"). Se oculta la raiz
+// del widget del mundo al final de cada OnUpdate (el minimapa usa MinimapDeviceMappinController, no se toca).
+@wrapMethod(GameplayMappinController)
+protected cb func OnUpdate() -> Bool {
+    let result: Bool = wrappedMethod();
+    let mappin: wref<IMappin> = this.GetMappin();
+    if IsDefined(mappin) && IsDefined(mappin.GetScriptData() as GRZoneCircleData) {
+        this.SetRootVisible(false);
+    }
+    return result;
+}
+
+public func GRBountyZoneTooltip(zone: wref<GRBountyZoneMappinData>, gi: GameInstance, out title: String, out desc: String) -> Bool {
+    if !IsDefined(zone) {
+        return false;
+    }
+    let core: ref<GRSystem> = GRSystem.Get(gi);
+    if !IsDefined(core) {
+        return false;
+    }
+    title = StrReplaceAll(core.GetText("GR-BountyZoneTitle"), "{name}", zone.name);
+    desc = StrReplaceAll(core.GetText(zone.boss ? "GR-BountyZoneLairDesc" : "GR-BountyZoneDesc"), "{name}", zone.name);
+    zone.LogOnce(GRStrongholdMappinData.ViewTooltip());
+    return true;
 }
 
 @wrapMethod(BaseWorldMapMappinController)
@@ -1442,11 +1884,21 @@ protected func UpdateIcon() -> Void {
 protected final func UpdateIcon() -> Void {
     wrappedMethod();
     GRApplyMappinIcon(this.GetMappin(), this.iconWidget, GRStrongholdMappinData.ViewMinimap());
+    // Zona de caza: en el minimapa va solo el circulo (MinimapDeviceMappinController); el pin central y el anillo se ocultan aca y quedan en el mapa grande.
+    if GRBounties.HideZonePinsOnMinimap() && IsDefined(GRBountyZoneMappinData.Of(this.GetMappin())) {
+        this.SetForceHide(true);
+    }
 }
 
-// The nemesis "hunt for psycho" world mappin carries no scriptData of its own (attaching one via
-// MappinData.scriptData made the native mappin stop rendering entirely - unknown cause, not worth the risk
-// again): identify it by variant and look its rank up by the EntityID the mappin is already attached to.
+// Update llama a UpdateVisibility despues de UpdateIcon; se vuelve a ocultar al final por si lo reseteara.
+@wrapMethod(MinimapPOIMappinController)
+protected func Update() -> Void {
+    wrappedMethod();
+    if GRBounties.HideZonePinsOnMinimap() && IsDefined(GRBountyZoneMappinData.Of(this.GetMappin())) {
+        this.SetForceHide(true);
+    }
+}
+
 @wrapMethod(QuestMappinController)
 protected func UpdateIcon() -> Void {
     wrappedMethod();
@@ -1465,8 +1917,6 @@ protected func UpdateIcon() -> Void {
     }
 }
 
-// The strongholds use their own variant (so the game can filter them with the STRONGHOLDS checkbox), which has no
-// world UI profile of its own: give them the one the game uses for OutpostVariant, as they had before.
 @wrapMethod(WorldMappinsContainerController)
 public func CreateMappinUIProfile(mappin: wref<IMappin>, mappinVariant: gamedataMappinVariant, customData: ref<MappinControllerCustomData>) -> MappinUIProfile {
     if Equals(mappinVariant, gamedataMappinVariant.CPO_PingDoorVariant) {
@@ -1477,12 +1927,6 @@ public func CreateMappinUIProfile(mappin: wref<IMappin>, mappinVariant: gamedata
     return wrappedMethod(mappin, mappinVariant, customData);
 }
 
-// The strongholds no longer use the police (NCPD scanner) tooltip: with their own variant the map opens the generic
-// tooltip, which would say "Unknown" without this.
-// Gang banner at the bottom of the stronghold tooltip, built the same way Virtual Atelier Delivery adds its picture
-// (a small widget parented to the tooltip's main content). Atlas: gangretaliation\gui\stronghold_banners.inkatlas,
-// one part per gang named like the gang in lowercase (animals, barghest, maelstrom, scavengers, sixthstreet,
-// tygerclaws, valentinos, voodooboys, wraiths), 680x288 each.
 @addField(WorldMapTooltipController)
 private let m_grBanner: wref<inkCompoundWidget>;
 
@@ -1536,6 +1980,13 @@ public func SetData(const data: script_ref<WorldMapTooltipData>, menu: ref<World
     if !IsDefined(player) {
         return;
     }
+    let zoneTitle: String;
+    let zoneDesc: String;
+    if GRBountyZoneTooltip(GRBountyZoneMappinData.Of(Deref(data).mappin), player.GetGame(), zoneTitle, zoneDesc) {
+        inkTextRef.SetText(this.m_titleText, zoneTitle);
+        inkTextRef.SetText(this.m_descText, zoneDesc);
+        return;
+    }
     if !IsDefined(mark) {
         return;
     }
@@ -1567,7 +2018,16 @@ public func SetData(const data: script_ref<WorldMapTooltipData>, menu: ref<World
     }
     let mark: wref<GRStrongholdMappinData> = GRStrongholdMappinData.Of(Deref(data).mappin);
     let player: wref<GameObject> = menu.GetPlayer();
-    if !IsDefined(mark) || !IsDefined(player) {
+    if !IsDefined(player) {
+        return;
+    }
+    let zoneTitle: String;
+    let zoneDesc: String;
+    if GRBountyZoneTooltip(GRBountyZoneMappinData.Of(Deref(data).mappin), player.GetGame(), zoneTitle, zoneDesc) {
+        inkTextRef.SetText(this.m_titleText, zoneTitle);
+        return;
+    }
+    if !IsDefined(mark) {
         return;
     }
     let core: ref<GRSystem> = GRSystem.Get(player.GetGame());
@@ -1580,8 +2040,6 @@ public func SetData(const data: script_ref<WorldMapTooltipData>, menu: ref<World
 }
 
 
-// The STRONGHOLDS checkbox is handled by the game itself: the strongholds use their own marker variant
-// (Mappins.GRStrongholdVariant, see tweaks/GangRetaliation/intel.yaml) listed in WorldMap.GRStrongholdFilterGroup.
 @wrapMethod(WorldMapMenuGameController)
 protected cb func OnInitialize() -> Bool {
     let result: Bool = wrappedMethod();
@@ -1613,9 +2071,11 @@ public class GRIntelSystem extends ScriptableSystem {
     private let m_rank: Int32;
     private let m_start: Float;
 
-    // Shard de intel: usado por el wrap de OnItemRemovedEvent para no contar como
-    // "recogido por V" nuestra propia destruccion del shard (ver DestroyIntelShard).
     private let m_suppressShardPickup: EntityID;
+
+    private let m_shardIds: array<EntityID>;
+    private let m_shardRanks: array<Int32>;
+    private let m_shardNemesis: array<Int32>;
 
     public static func Get(gi: GameInstance) -> ref<GRIntelSystem> {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRIntelSystem") as GRIntelSystem;
@@ -1671,9 +2131,6 @@ public class GRIntelSystem extends ScriptableSystem {
         return gang;
     }
 
-    // Shard de intel (prueba, 2026-11-18): un record por banda en vez de uno compartido, porque
-    // ItemID.FromTDBID(tdbid) da el mismo ItemID para cualquier shard construido con el mismo TDBID - no hay
-    // forma de guardar "de que banda vino" por instancia una vez en la pantalla de botin si comparten record.
     public static func ShardRecordFor(gang: String) -> TweakDBID {
         if Equals(gang, "Maelstrom") {
             return t"Items.GRIntelShard_Maelstrom";
@@ -1841,97 +2298,106 @@ public class GRIntelSystem extends ScriptableSystem {
         StatusEffectHelper.ApplyStatusEffect(npc, t"BaseStatusEffect.Unconscious");
         GRLog("Intel: " + gang + " inconsciente (" + GRIntelSystem.RankName(rank) + ", vida " + IntToString(RoundF(health))
             + "% <= " + IntToString(RoundF(threshold)) + "%) " + TDBID.ToStringDEBUG(npc.GetRecordID()));
-        this.RollForShard(npc, gang, rank, false);
+        this.QueueShard(npc.GetEntityID(), this.NemesisIdOf(npc.GetEntityID()), rank,
+            rank > 0 ? GRIntelCall.GiveShardNemesis() : GRIntelCall.GiveShard());
         return true;
     }
 
-    // 2026-11-19, user's call: any downed enemy, knocked out OR killed, has the same flat shot at the
-    // shard - no longer guaranteed on knockout, and no longer zero on a kill. Shared by TryKnockOut above
-    // and TryIntelOnDeath below so both paths roll identically. Configurable (0-25%, default 5) via
-    // GRSettings.intelDropPercent, right under "max per gang" in the mod's config menu.
-    private func ShardChancePercent() -> Int32 {
-        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
-        return IsDefined(settings) ? settings.intelDropPercent : 10;
-    }
-
-    // onDeath picks which delayed-call kind to queue: GiveShard's own OnGiveShardDelayed bails out if the
-    // NPC is dead by the time it fires (correct for a knockout gone bad in the meantime - see its comment),
-    // but that would silently eat every kill-granted shard too, since the NPC is dead by definition there.
-    // GiveShardOnDeath skips that guard instead.
-    //
-    // 2026-11-19, user's call: an already-promoted Nemesis (rank > 0 - see NemesisRank) always drops the
-    // shard, no roll - a named enemy's intel is worth more than a random ganger's. The configurable chance
-    // (ShardChancePercent) still applies to a plain, never-promoted gang member (rank == 0).
-    private func RollForShard(npc: ref<ScriptedPuppet>, gang: String, rank: Int32, onDeath: Bool) {
-        if rank == 0 && RandRange(0, 100) >= this.ShardChancePercent() {
-            GRLog("Intel: tirada de shard fallida (" + IntToString(this.ShardChancePercent()) + "%) " + TDBID.ToStringDEBUG(npc.GetRecordID()));
+    public func OnNemesisDown(id: EntityID, nemesisId: Int32, rank: Int32) {
+        if rank <= 0 || nemesisId <= 0 {
             return;
         }
-        // Dado via CET a mano en juego (2026-11-18): GiveItem() dentro del propio evento de golpe/muerte
-        // (sincrono, a mitad de combate) reporta exito pero el item no persiste - algo en la transicion a
-        // "derribado"/"muerto" probablemente reinicia/limpia el inventario justo despues. Dar el shard con
-        // el mismo metodo pero DEMORADO (0.5 s, una vez asentado el estado) si funciono manualmente, asi
-        // que se encola igual.
-        let kind: Int32 = onDeath ? GRIntelCall.GiveShardOnDeath() : GRIntelCall.GiveShard();
-        GRIntelCall.Send(this.GetGameInstance(), kind, npc.GetEntityID(), 0.5);
+        this.QueueShard(id, nemesisId, rank, GRIntelCall.GiveShardNemesis());
     }
 
-    // Llamado por GRSpawner.RecordDeath (Spawner.reds) cuando la muerte quedo atribuida a V, directa o
-    // indirectamente (mismo chequeo que "cause == v" ya usa para las notificaciones/el retorno) - antes
-    // del redisenio de 2026-11-19 un cadaver nunca tiraba intel, solo un derribo.
-    public func TryIntelOnDeath(npc: ref<ScriptedPuppet>) {
-        if !IsDefined(npc) {
+    private func QueueShard(id: EntityID, nemesisId: Int32, rank: Int32, kind: Int32) {
+        if this.ShardIndex(id) >= 0 {
             return;
         }
-        let gang: String = GRDetection.GetGang(npc);
-        if StrLen(gang) == 0 || this.GangIndex(gang) < 0 {
-            return;
-        }
-        let rank: Int32 = this.NemesisRank(npc);
-        GRLog("Intel: tirada de shard por muerte atribuida a V (" + gang + ", " + GRIntelSystem.RankName(rank) + ") " + TDBID.ToStringDEBUG(npc.GetRecordID()));
-        this.RollForShard(npc, gang, rank, true);
+        ArrayPush(this.m_shardIds, id);
+        ArrayPush(this.m_shardRanks, rank);
+        ArrayPush(this.m_shardNemesis, nemesisId);
+        GRIntelCall.Send(this.GetGameInstance(), kind, id, 0.5);
     }
 
-    // --- Shard de intel: unica forma de ganar intel desde 2026-11-18 (el mapa/icono HUD/"Extract Data" se
-    // retiraron ese mismo dia, confirmados funcionando de forma consistente).
+    private func ShardIndex(id: EntityID) -> Int32 {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_shardIds) {
+            if this.m_shardIds[i] == id {
+                return i;
+            }
+            i += 1;
+        }
+        return -1;
+    }
 
-    // Llamado por GRIntelCall 0.5 s despues de TryKnockOut o TryIntelOnDeath - ver el comentario de ahi.
-    // allowDead es false para un derribo (un derribo que termino en muerte real antes de que esto corra ya
-    // no deberia dar shard) y true para una muerte (el NPC esta muerto por definicion, eso es el punto).
+    private func ForgetShard(id: EntityID) {
+        let i: Int32 = this.ShardIndex(id);
+        if i >= 0 {
+            ArrayErase(this.m_shardIds, i);
+            ArrayErase(this.m_shardRanks, i);
+            ArrayErase(this.m_shardNemesis, i);
+        }
+    }
+
+    private func NemesisIdOf(id: EntityID) -> Int32 {
+        let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
+        return IsDefined(spawner) ? spawner.GetNemesisId(id) : 0;
+    }
+
+    private func ShardRank(npc: ref<ScriptedPuppet>) -> Int32 {
+        let i: Int32 = this.ShardIndex(npc.GetEntityID());
+        if i >= 0 {
+            return this.m_shardRanks[i];
+        }
+        return this.NemesisRank(npc);
+    }
+
+
     public func OnGiveShardDelayed(id: EntityID, allowDead: Bool) {
         let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
-        if !IsDefined(npc) || (!allowDead && npc.IsDead()) {
+        if !IsDefined(npc) {
+            this.ForgetShard(id);
+            return;
+        }
+        if npc.IsDead() && !allowDead {
+            this.ForgetShard(id);
             return;
         }
         let gang: String = GRDetection.GetGang(npc);
-        let rank: Int32 = this.NemesisRank(npc);
         if StrLen(gang) == 0 {
+            this.ForgetShard(id);
             return;
         }
-        this.GiveIntelShard(npc, gang, rank);
+        let i: Int32 = this.ShardIndex(id);
+        let rank: Int32 = i >= 0 ? this.m_shardRanks[i] : this.NemesisRank(npc);
+        let nemesisId: Int32 = i >= 0 ? this.m_shardNemesis[i] : 0;
+        this.GiveIntelShard(npc, gang, rank, nemesisId);
     }
 
-    private func GiveIntelShard(npc: ref<ScriptedPuppet>, gang: String, rank: Int32) {
+    private func GiveIntelShard(npc: ref<ScriptedPuppet>, gang: String, rank: Int32, nemesisId: Int32) {
         let recordID: TweakDBID = GRIntelSystem.ShardRecordFor(gang);
         if !TDBID.IsValid(recordID) {
             return;
         }
         let ts: ref<TransactionSystem> = GameInstance.GetTransactionSystem(this.GetGameInstance());
         let id: ItemID = ItemID.FromTDBID(recordID);
+        let state: String = npc.IsDead() ? "muerto" : "noqueado";
+        if ts.GetItemQuantity(npc, id) > 0 {
+            GRLog("Intel: shard ya presente en " + (nemesisId > 0 ? "Nemesis #" + IntToString(nemesisId) : gang)
+                + " (" + GRIntelSystem.RankName(rank) + ", " + state + "), no se da otro");
+            return;
+        }
         let given: Bool = ts.GiveItem(npc, id, 1);
-        // ScriptedPuppet.OnItemAddedEvent only re-evaluates loot quality/refreshes the loot UI if the NPC
-        // already had a valid loot quality BEFORE this item (HasValidLootQuality() guard in the vanilla
-        // listener) - an NPC with no other loot never gets initialized by that path. Forcing the unguarded
-        // evaluation here (ScriptedPuppet.EvaluateLootQualityEvent, no HasValidLootQuality() check) should
-        // make the shard actually show up in the loot panel instead of silently sitting in the inventory.
         npc.EvaluateLootQualityEvent();
-        GRLog("Intel: shard (prueba) " + (given ? "dado" : "FALLO al dar") + " a " + gang + " (" + GRIntelSystem.RankName(rank) + ") "
+        if !given {
+            this.ForgetShard(npc.GetEntityID());
+        }
+        let who: String = nemesisId > 0 ? "Nemesis #" + IntToString(nemesisId) : gang;
+        GRLog("Intel: shard " + (given ? "dado" : "FALLO al dar") + " a " + who + " (" + GRIntelSystem.RankName(rank) + ", " + state + ") "
             + TDBID.ToStringDEBUG(npc.GetRecordID()));
     }
 
-    // Interruptor de hombre muerto: si el NPC muere de verdad antes de que lo saqueen, el shard se destruye
-    // en silencio (no cuenta como recogido). Si solo quedo inconsciente (o se escapo/desperto), el shard se
-    // queda en su inventario sin tocar.
     private func DestroyIntelShard(npc: ref<ScriptedPuppet>, gang: String) {
         let recordID: TweakDBID = GRIntelSystem.ShardRecordFor(gang);
         if !TDBID.IsValid(recordID) {
@@ -1950,35 +2416,37 @@ public class GRIntelSystem extends ScriptableSystem {
         }
     }
 
-    // Llamado desde el wrap de ScriptedPuppet.OnItemRemovedEvent (mas abajo) cuando el shard sale del
-    // inventario del NPC de origen - o sea, V lo saqueo. Replica el mismo incremento que "Extract Data" usa hoy.
     public func OnShardLooted(npc: ref<ScriptedPuppet>) {
         if !IsDefined(npc) || Equals(npc.GetEntityID(), this.m_suppressShardPickup) {
             return;
         }
         let gang: String = GRDetection.GetGang(npc);
-        let rank: Int32 = this.NemesisRank(npc);
+        let tracked: Bool = this.ShardIndex(npc.GetEntityID()) >= 0;
+        let rank: Int32 = this.ShardRank(npc);
+        this.ForgetShard(npc.GetEntityID());
+        GRLog("Intel: shard saqueado, rango usado " + GRIntelSystem.RankName(rank) + (tracked ? " (recordado al darlo)" : " (sin registro, rango actual)"));
         if StrLen(gang) == 0 {
             GRLog("Intel: shard (prueba) recogido pero sin banda valida, ignorado ("
                 + TDBID.ToStringDEBUG(npc.GetRecordID()) + ")");
             return;
         }
-        // Si ya hay una barra activa (extraccion real u otro shard), NO la pisamos - StartShardBar sobreescribe
-        // m_gang/m_rank/m_start sin avisar, lo que perderia el intel de lo que ya estaba en curso. En ese caso
-        // se suma al instante, sin animacion, en vez de arriesgar perder el dato.
         if this.m_active {
             GRLog("Intel: shard (prueba) recogido con otra barra ya activa, sumado al instante sin animacion, "
                 + gang + " (" + GRIntelSystem.RankName(rank) + ")");
             this.AddIntel(gang, GRIntelSystem.AmountFor(rank), "shard (prueba, sin animacion): " + GRIntelSystem.RankName(rank));
+            this.RevealTraitFromShard(gang);
             return;
         }
         GRLog("Intel: shard (prueba) recogido, " + gang + " (" + GRIntelSystem.RankName(rank) + "), arrancando barra cosmetica");
         this.StartShardBar(gang, rank);
     }
 
-    // Interruptor de hombre muerto del shard (ver DestroyIntelShard): si el NPC muere de verdad antes de
-    // que V saquee el shard, se destruye en silencio.
     public func OnNPCDeath(id: EntityID) {
+        let i: Int32 = this.ShardIndex(id);
+        if i >= 0 && this.m_shardRanks[i] > 0 {
+            return;
+        }
+        this.ForgetShard(id);
         let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
         if !IsDefined(npc) {
             return;
@@ -2027,10 +2495,6 @@ public class GRIntelSystem extends ScriptableSystem {
         return EngineTime.ToFloat(GameInstance.GetSimTime(this.GetGameInstance()));
     }
 
-    // Barra cosmetica "Extracting Intel" al recoger un shard - no depende de un NPC vivo/cerca, el dato ya
-    // esta "en mano" de V al recogerlo (a diferencia de la vieja extraccion en vivo sobre el cuerpo). El
-    // intel se suma recien al llegar al 100%, por pedido del usuario ("have it go and then pop up the intel
-    // % when done"), no al instante de recogerlo.
     private func StartShardBar(gang: String, rank: Int32) {
         this.m_active = true;
         this.m_gang = gang;
@@ -2063,9 +2527,17 @@ public class GRIntelSystem extends ScriptableSystem {
             let rank: Int32 = this.m_rank;
             this.Stop(true, "");
             this.AddIntel(gang, GRIntelSystem.AmountFor(rank), "shard (prueba): " + GRIntelSystem.RankName(rank));
+            this.RevealTraitFromShard(gang);
             return;
         }
         GRIntelCall.Send(this.GetGameInstance(), GRIntelCall.Tick(), new EntityID(), 0.1);
+    }
+
+    private func RevealTraitFromShard(gang: String) {
+        let traits: ref<GRTraits> = GRTraits.Get(this.GetGameInstance());
+        if IsDefined(traits) {
+            traits.RevealFromIntel(gang);
+        }
     }
 
     private func Stop(done: Bool, reason: String) {
@@ -2108,7 +2580,7 @@ public class GRIntelCall extends DelayCallback {
 
     public static func Tick() -> Int32 { return 1; }
     public static func GiveShard() -> Int32 { return 3; }
-    public static func GiveShardOnDeath() -> Int32 { return 4; }
+    public static func GiveShardNemesis() -> Int32 { return 4; }
 
     public static func Send(gi: GameInstance, kind: Int32, id: EntityID, delay: Float) {
         let call: ref<GRIntelCall> = new GRIntelCall();
@@ -2123,20 +2595,14 @@ public class GRIntelCall extends DelayCallback {
         if !IsDefined(intel) {
             return;
         }
-        if this.kind == GRIntelCall.GiveShard() {
-            intel.OnGiveShardDelayed(this.entityID, false);
-            return;
-        }
-        if this.kind == GRIntelCall.GiveShardOnDeath() {
-            intel.OnGiveShardDelayed(this.entityID, true);
+        if this.kind == GRIntelCall.GiveShard() || this.kind == GRIntelCall.GiveShardNemesis() {
+            intel.OnGiveShardDelayed(this.entityID, this.kind == GRIntelCall.GiveShardNemesis());
             return;
         }
         intel.OnTick();
     }
 }
 
-// Shard de intel (prueba, 2026-11-18): detecta cuando el shard sale del inventario del PROPIO NPC (lo
-// saqueo V), no del inventario de V - asi sabemos de cual cadaver vino sin tener que rastrear el ItemID.
 @wrapMethod(ScriptedPuppet)
 protected cb func OnItemRemovedEvent(evt: ref<ItemBeingRemovedEvent>) -> Bool {
     let result: Bool = wrappedMethod(evt);
@@ -2149,10 +2615,6 @@ protected cb func OnItemRemovedEvent(evt: ref<ItemBeingRemovedEvent>) -> Bool {
     return result;
 }
 
-// Shard de intel (prueba, 2026-11-18): lo saca de encima del inventario de V apenas entra, igual que el
-// motor hace nativamente con los "Money Shard" (player.swift, gamedataItemType.Gen_MoneyShard) - nuestro
-// item usa itemType Gen_Misc a proposito (ver shard.yaml) para NO caer en la rama de Gen_Readable, que lo
-// quita sola pero ademas muestra una notificacion en pantalla vacia (sin contenido de lectura real).
 @wrapMethod(PlayerPuppet)
 protected cb func OnItemAddedToInventory(evt: ref<ItemAddedEvent>) -> Bool {
     let result: Bool = wrappedMethod(evt);

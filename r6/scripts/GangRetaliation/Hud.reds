@@ -184,8 +184,6 @@ public class GRHud extends ScriptableSystem {
         return new HDRColor(0.89, 0.69, 0.29, 1.0);
     }
 
-    // Same tiers as Menu.reds's RankColor (white/red/gold for soldier/lieutenant/boss), exposed here so the
-    // nemesis world mappin (Stronghold.reds's GRApplyMappinIcon) can retint it to match.
     public static func RankMappinColor(rank: Int32) -> HDRColor {
         if rank >= 3 {
             return GRHud.Gold();
