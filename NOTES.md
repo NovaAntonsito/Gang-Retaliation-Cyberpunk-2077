@@ -16,7 +16,7 @@ Related: `CHANGELOG.md` (release notes), `README.md` (layout), `../GangRetaliati
 
 - **NovaAntonsito** wrote Gang Retaliation and publishes it (Nexus mod 36235). They are the author and decide what ships.
 - The maintainer here is a co-author on this work. We contribute changes on top of their releases; they publish them. History/Chronicle and Expanded Names are separate companion mods.
-- Our releases so far: **1.4.7** (map filter crash fix, stronghold filter, tooltip banner), **1.4.8**, and **1.4.9** (see `CHANGELOG.md`). **1.5.0 is built and pushed to `RedFalcon`, open as PR #9 against `main` as of 2026-11-19, not yet merged/released** (scrollable nemesis detail panel, FALLEN roster redesign, unified/configurable intel shard chance — see section 5).
+- Our releases so far: **1.4.7** (map filter crash fix, stronghold filter, tooltip banner), **1.4.8**, and **1.4.9** (see `CHANGELOG.md`). **1.4.10 is built and pushed to `RedFalcon`, open as PR #9 against `main` as of 2026-11-19, not yet merged/released** (scrollable nemesis detail panel, FALLEN roster redesign, unified/configurable intel shard chance, plus the 2026-11-21 session's fixes — see section 5).
 - Do not publish or send anything outside the project without the maintainer's go-ahead.
 
 ## 2. Layout and workflow

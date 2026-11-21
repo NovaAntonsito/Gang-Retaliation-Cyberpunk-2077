@@ -16,7 +16,7 @@ Relacionado: `CHANGELOG.md` (notas de versión), `README.md` (estructura), `../G
 
 - **NovaAntonsito** creó Gang Retaliation y lo publica (Nexus, mod 36235). Es el autor y decide qué se publica.
 - Quien mantiene este repositorio es coautor de este trabajo. Aportamos cambios sobre sus versiones; él las publica. History/Chronicle y Expanded Names son mods complementarios aparte.
-- Nuestras versiones hasta ahora: **1.4.7** (arreglo del cierre al cambiar filtros del mapa, filtro de guaridas, banner en el tooltip), **1.4.8**, y **1.4.9** (ver `CHANGELOG.md`). **1.5.0 está construida y subida a `RedFalcon`, abierta como PR #9 contra `main` desde el 2026-11-19, todavía sin fusionar/publicar** (panel de detalle de némesis con desplazamiento, rediseño de la lista de CAÍDOS, probabilidad de shard de intel unificada/configurable - ver la sección 5).
+- Nuestras versiones hasta ahora: **1.4.7** (arreglo del cierre al cambiar filtros del mapa, filtro de guaridas, banner en el tooltip), **1.4.8**, y **1.4.9** (ver `CHANGELOG.md`). **1.4.10 está construida y subida a `RedFalcon`, abierta como PR #9 contra `main` desde el 2026-11-19, todavía sin fusionar/publicar** (panel de detalle de némesis con desplazamiento, rediseño de la lista de CAÍDOS, probabilidad de shard de intel unificada/configurable, más los arreglos de la sesión del 2026-11-21 - ver la sección 5).
 - No publiques ni envíes nada fuera del proyecto sin el visto bueno de quien mantiene el proyecto.
 
 ## 2. Estructura y flujo de trabajo
