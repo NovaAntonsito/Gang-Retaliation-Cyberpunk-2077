@@ -153,6 +153,13 @@ public class GRHud extends ScriptableSystem {
     private let c_padX: Float = 24.0;
     private let c_padY: Float = 18.0;
 
+    private let m_debugBox: ref<inkCanvas>;
+    private let m_debugPanel: ref<inkVerticalPanel>;
+    private let m_debugRows: array<ref<inkText>>;
+    private let m_debugLines: array<String>;
+    private let c_debugMaxLines: Int32 = 8;
+    private let c_debugLineChars: Int32 = 220;
+
     public static func Yellow() -> HDRColor {
         return new HDRColor(1.0, 0.82, 0.4, 1.0);
     }
@@ -327,6 +334,122 @@ public class GRHud extends ScriptableSystem {
         return true;
     }
 
+    // A plain, silent, always-on scrolling panel - unlike GRDetection.Notify()'s SimpleScreenMessage
+    // toasts, which have a built-in slide-in animation and stinger sound baked into the native widget
+    // itself (no way to suppress just that), so they're wrong for a fast-moving line-by-line log view.
+    // Push-based rather than ticked: a line is only ever written to the on-screen ring buffer at the
+    // exact moment GRDetection.Debug() decides to log it, so there's no polling/refresh loop needed here.
+    private func EnsureDebugPanel() -> Bool {
+        if IsDefined(this.m_debugPanel) {
+            return true;
+        }
+        let window: ref<inkCompoundWidget> = GameInstance.GetInkSystem().GetLayer(n"inkHUDLayer").GetVirtualWindow();
+        let hudRoot: ref<inkCompoundWidget> = IsDefined(window) ? window.GetWidgetByPathName(n"Root") as inkCompoundWidget : null;
+        if !IsDefined(hudRoot) {
+            return false;
+        }
+        let slot: ref<inkCanvas> = new inkCanvas();
+        slot.SetName(n"GangRetaliationDebugSlot");
+        slot.SetSize(new Vector2(3840.0, 2160.0));
+        slot.SetRenderTransformPivot(new Vector2(0.0, 0.0));
+        slot.Reparent(hudRoot);
+        let watcher: ref<VirtualResolutionWatcher> = new VirtualResolutionWatcher();
+        watcher.Initialize(this.GetGameInstance());
+        watcher.ScaleWidget(slot);
+
+        let box: ref<inkCanvas> = new inkCanvas();
+        box.SetName(n"gr_debug_log");
+        box.SetAnchor(inkEAnchor.CenterRight);
+        box.SetAnchorPoint(new Vector2(1.0, 0.5));
+        box.SetMargin(new inkMargin(0.0, 0.0, 70.0, 0.0));
+        box.SetSize(new Vector2(1040.0, 640.0));
+        box.SetVisible(false);
+
+        let bg: ref<inkRectangle> = new inkRectangle();
+        bg.SetAnchor(inkEAnchor.Fill);
+        bg.SetTintColor(new HDRColor(0.02, 0.02, 0.03, 1.0));
+        bg.SetOpacity(0.92);
+        bg.Reparent(box);
+        let border: ref<GRBorder> = new GRBorder();
+        border.SetAnchor(inkEAnchor.Fill);
+        border.SetThickness(2.0);
+        border.SetTintColor(new HDRColor(0.4, 0.45, 0.5, 1.0));
+        border.Reparent(box);
+
+        let panel: ref<inkVerticalPanel> = new inkVerticalPanel();
+        panel.SetAnchor(inkEAnchor.TopLeft);
+        panel.SetFitToContent(true);
+        panel.SetMargin(new inkMargin(16.0, 12.0, 0.0, 0.0));
+        panel.SetChildMargin(new inkMargin(0.0, 0.0, 0.0, 6.0));
+
+        let i: Int32 = 0;
+        while i < this.c_debugMaxLines {
+            let row: ref<inkText> = this.NewText(27, GRHud.White(), n"Medium");
+            row.SetText("");
+            row.SetWrappingAtPosition(995.0);
+            row.SetVisible(false);
+            row.Reparent(panel);
+            ArrayPush(this.m_debugRows, row);
+            i += 1;
+        }
+        panel.Reparent(box);
+        box.Reparent(slot);
+        this.m_debugBox = box;
+        this.m_debugPanel = panel;
+        return true;
+    }
+
+    private func Pad2(v: Int32) -> String {
+        return v < 10 ? "0" + IntToString(v) : IntToString(v);
+    }
+
+    // redscript has no native wall-clock accessor, only simulation time (GameInstance.GetSimTime) - so
+    // this is an elapsed session clock (H:MM:SS since the engine started ticking), not real-world time of
+    // day. That's fine for its purpose: letting two lines in a recorded video be compared to each other,
+    // not matched up against gamelog.log (which is wall-clock and needs the game closed to flush anyway).
+    private func ClockStamp() -> String {
+        let totalSec: Int32 = Cast<Int32>(EngineTime.ToFloat(GameInstance.GetSimTime(this.GetGameInstance())));
+        let h: Int32 = totalSec / 3600 % 24;
+        let m: Int32 = totalSec / 60 % 60;
+        let s: Int32 = totalSec % 60;
+        return this.Pad2(h) + ":" + this.Pad2(m) + ":" + this.Pad2(s);
+    }
+
+    // Called directly from GRDetection.Debug() (gated there on settings.debugOnScreen) rather than from
+    // every individual call site - that already covers exactly the detection/flee/hide/disarm messages,
+    // since those all funnel through the same Debug() choke point, without also pulling in unrelated
+    // subsystems (stronghold scanning, intel rolls, etc.) that log through their own Debug() methods.
+    public func PushDebugLine(msg: String) {
+        if !this.EnsureDebugPanel() {
+            return;
+        }
+        let line: String = this.ClockStamp() + "  " + msg;
+        if StrLen(line) > this.c_debugLineChars {
+            line = StrLeft(line, this.c_debugLineChars) + "...";
+        }
+        ArrayPush(this.m_debugLines, line);
+        while ArraySize(this.m_debugLines) > this.c_debugMaxLines {
+            ArrayErase(this.m_debugLines, 0);
+        }
+        this.RefreshDebugRows();
+        this.m_debugBox.SetVisible(true);
+    }
+
+    // Shared between PushDebugLine (a new line arrived) and Update (the panel was just turned on and
+    // should show whatever's already in m_debugLines without waiting for a new line).
+    private func RefreshDebugRows() {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_debugRows) {
+            if i < ArraySize(this.m_debugLines) {
+                this.m_debugRows[i].SetText(this.m_debugLines[i]);
+                this.m_debugRows[i].SetVisible(true);
+            } else {
+                this.m_debugRows[i].SetVisible(false);
+            }
+            i += 1;
+        }
+    }
+
     private func PlaceBox(settings: ref<GRSettings>) {
         let x: Float = settings.threatPanelX;
         let y: Float = settings.threatPanelY;
@@ -442,6 +565,20 @@ public class GRHud extends ScriptableSystem {
         let gi: GameInstance = this.GetGameInstance();
         let settings: ref<GRSettings> = GRSettings.Get(gi);
         let player: ref<PlayerPuppet> = GetPlayer(gi);
+        // PushDebugLine (called from GRDetection.Debug(), gated there on settings.debugOnScreen) is the only
+        // thing that shows/hides the debug panel otherwise, so toggling the setting had no effect until the
+        // next line arrived - turning it off wouldn't hide an already-visible panel, and turning it on
+        // wouldn't show the backlog already sitting in m_debugLines. Handle both here on the existing tick.
+        if IsDefined(settings) && settings.debugOnScreen {
+            if this.EnsureDebugPanel() {
+                this.RefreshDebugRows();
+                this.m_debugBox.SetVisible(true);
+            }
+        } else {
+            if IsDefined(this.m_debugBox) {
+                this.m_debugBox.SetVisible(false);
+            }
+        }
         if !IsDefined(settings) || !IsDefined(player) || !settings.enabled || !settings.threatPanelEnabled || this.IsRadialOpen() {
             if IsDefined(this.m_box) {
                 this.m_box.SetVisible(false);

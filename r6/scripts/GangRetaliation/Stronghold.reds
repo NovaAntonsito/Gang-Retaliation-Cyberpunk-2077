@@ -93,6 +93,15 @@ public class GRStronghold extends ScriptableSystem {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRStronghold") as GRStronghold;
     }
 
+    // These "Guarida (...)"/"Guaridas auto: ..." messages always write to gamelog.log regardless of the
+    // debugLog setting (they're placement/scanning records, not purely debug-gated chatter) - this adds
+    // an independent, optional on-screen mirror (debugOnScreen + debugOnScreenStronghold) without
+    // changing that unconditional file-write behavior.
+    private func Log(msg: String) {
+        GRLog(msg);
+        GRPushDebugLine(this.GetGameInstance(), msg, "Stronghold");
+    }
+
     public static func MapFilter() -> gamedataWorldMapFilter {
         return gamedataWorldMapFilter.RelicDeviceFilter;
     }
@@ -103,7 +112,7 @@ public class GRStronghold extends ScriptableSystem {
 
     public func MarkMapFilterSeeded() {
         this.m_mapFilterSeeded = true;
-        GRLog("Mapa: filtro GUARIDAS prendido por primera vez en esta partida");
+        this.Log("Mapa: filtro GUARIDAS prendido por primera vez en esta partida");
     }
 
     public func SetMapFilter(custom: Bool, on: Bool) {
@@ -114,7 +123,7 @@ public class GRStronghold extends ScriptableSystem {
         if changed {
             let customText: String = custom ? "si" : "no";
             let onText: String = on ? "marcada" : "sin marcar";
-            GRLog("Mapa: filtro rapido PERSONALIZADA = " + customText + ", casilla GUARIDAS = " + onText);
+            this.Log("Mapa: filtro rapido PERSONALIZADA = " + customText + ", casilla GUARIDAS = " + onText);
         }
     }
 
@@ -210,13 +219,13 @@ public class GRStronghold extends ScriptableSystem {
                 this.m_siteMappins[i] = GameInstance.GetMappinSystem(this.GetGameInstance()).RegisterMappin(data, this.m_sitePos[i]);
                 this.m_siteHasMappin[i] = true;
                 if located {
-                    GRLog("Guarida (" + this.m_siteGangs[i] + "): ocupada y localizada, en el mapa");
+                    this.Log("Guarida (" + this.m_siteGangs[i] + "): ocupada y localizada, en el mapa");
                 } else {
-                    GRLog("Guarida (" + this.m_siteGangs[i] + "): visible por debug (intel " + IntToString(intel.GetIntel(this.m_siteGangs[i])) + "%)");
+                    this.Log("Guarida (" + this.m_siteGangs[i] + "): visible por debug (intel " + IntToString(intel.GetIntel(this.m_siteGangs[i])) + "%)");
                 }
             } else if !occupied && this.m_siteHasMappin[i] {
                 this.RemoveSiteMappin(i);
-                GRLog("Guarida (" + this.m_siteGangs[i] + "): vacia o sin localizar, fuera del mapa");
+                this.Log("Guarida (" + this.m_siteGangs[i] + "): vacia o sin localizar, fuera del mapa");
             }
             i += 1;
         }
@@ -805,14 +814,14 @@ public class GRStronghold extends ScriptableSystem {
     }
 
     private func LogScan() {
-        GRLog("Guaridas auto: escaneo de mappins (Map): " + IntToString(this.m_scanTotal) + " mappins, " + IntToString(this.m_scanVariant)
+        this.Log("Guaridas auto: escaneo de mappins (Map): " + IntToString(this.m_scanTotal) + " mappins, " + IntToString(this.m_scanVariant)
             + " outpost/gangwatch (" + IntToString(this.m_scanPoi) + " son POI) | candidatos con posicion " + IntToString(this.m_candFound) + "/"
             + IntToString(this.m_candCount) + " (por hash estatico " + IntToString(this.m_scanStatic) + ", por plan B journal "
             + IntToString(this.m_scanJournal) + ") | POI sin candidato " + IntToString(this.m_scanUnmatched)
             + (StrLen(this.m_scanExample) > 0 ? " (ej. hash " + this.m_scanExample + ")" : "") + " | candidatos dentro de area de seguridad "
             + IntToString(this.m_scanSecure) + " | mappins de mision " + IntToString(ArraySize(this.m_questPos)) + ", de zona segura "
             + IntToString(ArraySize(this.m_safePos)));
-        GRLog("Guaridas auto: hash estatico vs journal: " + IntToString(this.m_journalSame) + " iguales de " + IntToString(this.m_journalFound)
+        this.Log("Guaridas auto: hash estatico vs journal: " + IntToString(this.m_journalSame) + " iguales de " + IntToString(this.m_journalFound)
             + " paths que el journal conoce (de " + IntToString(this.m_candCount) + " candidatos)"
             + (StrLen(this.m_journalExample) > 0 ? " | distinto, ej. " + this.m_journalExample : ""));
         let line: String = "";
@@ -836,14 +845,14 @@ public class GRStronghold extends ScriptableSystem {
             line += this.m_gangList[g] + " " + IntToString(known) + "/" + IntToString(total);
             g += 1;
         }
-        GRLog("Guaridas auto: candidatos con posicion por banda: " + line);
+        this.Log("Guaridas auto: candidatos con posicion por banda: " + line);
         if this.m_scanPoi == 0 {
             let system: ref<MappinSystem> = GameInstance.GetMappinSystem(this.GetGameInstance());
             let world: array<ref<IMappin>>;
             let minimap: array<ref<IMappin>>;
             system.GetMappins(gamemappinsMappinTargetType.World, world);
             system.GetMappins(gamemappinsMappinTargetType.Minimap, minimap);
-            GRLog("Guaridas auto: ningun POI outpost/gangwatch en GetMappins(Map) (" + IntToString(this.m_scanVariant)
+            this.Log("Guaridas auto: ningun POI outpost/gangwatch en GetMappins(Map) (" + IntToString(this.m_scanVariant)
                 + " mappins de esas variantes en total): los POI sin descubrir no aparecen o no son PointOfInterestMappin. Otras listas: World "
                 + IntToString(ArraySize(world)) + ", Minimap " + IntToString(ArraySize(minimap)) + " mappins. Todas las bandas siguen en el sitio fijo");
         }
@@ -877,10 +886,10 @@ public class GRStronghold extends ScriptableSystem {
                 let y: Float = this.m_chosenY[slot];
                 if cand < this.m_candCount && Equals(this.m_candGangs[cand], this.m_siteGangs[i]) && (AbsF(x) > 0.01 || AbsF(y) > 0.01) {
                     this.m_sitePos[i] = new Vector4(x, y, this.m_chosenZ[slot], 1.0);
-                    GRLog("Guarida (" + this.m_siteGangs[i] + "): en " + this.m_candIds[cand] + " (eleccion guardada en la partida)");
+                    this.Log("Guarida (" + this.m_siteGangs[i] + "): en " + this.m_candIds[cand] + " (eleccion guardada en la partida)");
                 } else {
                     this.m_chosen[slot] = 0;
-                    GRLog("Guarida (" + this.m_siteGangs[i] + "): eleccion guardada invalida (candidato " + IntToString(cand) + "), vuelve al sitio fijo");
+                    this.Log("Guarida (" + this.m_siteGangs[i] + "): eleccion guardada invalida (candidato " + IntToString(cand) + "), vuelve al sitio fijo");
                 }
             }
             i += 1;
@@ -993,7 +1002,7 @@ public class GRStronghold extends ScriptableSystem {
     }
 
     private func LogChosen(site: Int32, cand: Int32, discarded: String) {
-        GRLog("Guarida (" + this.m_siteGangs[site] + "): elegida " + this.m_candIds[cand] + " (" + (this.m_candVariants[cand] == 0 ? "outpost" : "gangwatch")
+        this.Log("Guarida (" + this.m_siteGangs[site] + "): elegida " + this.m_candIds[cand] + " (" + (this.m_candVariants[cand] == 0 ? "outpost" : "gangwatch")
             + ") a " + IntToString(Cast<Int32>(this.GetSiteDistance(site))) + " m de V | " + discarded);
     }
 
@@ -1006,16 +1015,16 @@ public class GRStronghold extends ScriptableSystem {
         let discarded: String;
         let cand: Int32 = this.ChooseCandidate(site, current, oldPos, true, discarded);
         if cand < 0 && current < 0 {
-            GRLog("Guarida (" + gang + "): no se muda (" + reason + "), sin candidato valido: sigue en el sitio fijo | " + discarded);
+            this.Log("Guarida (" + gang + "): no se muda (" + reason + "), sin candidato valido: sigue en el sitio fijo | " + discarded);
             return false;
         }
         this.MoveSite(site, cand);
         if cand >= 0 {
             this.LogChosen(site, cand, discarded);
         } else {
-            GRLog("Guarida (" + gang + "): sin candidato valido, vuelve al sitio fijo | " + discarded);
+            this.Log("Guarida (" + gang + "): sin candidato valido, vuelve al sitio fijo | " + discarded);
         }
-        GRLog("Guarida (" + gang + "): se muda de " + oldLabel + " a " + this.SiteLabel(site) + " (" + reason + ")");
+        this.Log("Guarida (" + gang + "): se muda de " + oldLabel + " a " + this.SiteLabel(site) + " (" + reason + ")");
         return true;
     }
 
@@ -1073,7 +1082,7 @@ public class GRStronghold extends ScriptableSystem {
                         pending = true;
                         if NotEquals(this.m_siteChoiceLog[i], discarded) {
                             this.m_siteChoiceLog[i] = discarded;
-                            GRLog("Guarida (" + gang + "): sin candidato valido, sigue en el sitio fijo (reintenta cada 60 s) | " + discarded);
+                            this.Log("Guarida (" + gang + "): sin candidato valido, sigue en el sitio fijo (reintenta cada 60 s) | " + discarded);
                         }
                     }
                 }
@@ -1163,7 +1172,7 @@ public class GRStronghold extends ScriptableSystem {
                 }
                 if retry >= GRStronghold.MinPosts() {
                     snapped.W = 1.0;
-                    GRLog("Guarida (" + gang + "): centro de " + this.SiteLabel(site) + " ajustado al navmesh (" + IntToString(posts) + " -> "
+                    this.Log("Guarida (" + gang + "): centro de " + this.SiteLabel(site) + " ajustado al navmesh (" + IntToString(posts) + " -> "
                         + IntToString(retry) + " puestos; Z " + FloatToStringPrec(pos.Z, 2) + " -> " + FloatToStringPrec(snapped.Z, 2) + ", "
                         + FloatToStringPrec(Vector4.Distance2D(snapped, pos), 1) + " m en planta)");
                     this.SetSitePosition(site, snapped);
@@ -1185,20 +1194,20 @@ public class GRStronghold extends ScriptableSystem {
             }
         }
         if StrLen(reason) == 0 {
-            GRLog("Guarida (" + gang + "): revalidada " + where + " (" + this.SiteLabel(site) + ", V a "
+            this.Log("Guarida (" + gang + "): revalidada " + where + " (" + this.SiteLabel(site) + ", V a "
                 + IntToString(Cast<Int32>(this.GetSiteDistance(site))) + " m): sin mision, sin NCPD, puestos " + postsText);
             return 0;
         }
         let intel: ref<GRIntelSystem> = GRIntelSystem.Get(this.GetGameInstance());
         if !IsDefined(intel) || intel.IsLocated(gang) {
-            GRLog("Guarida (" + gang + "): falla la revalidacion " + where + " (" + reason + ") pero ya esta localizada: no se muda");
+            this.Log("Guarida (" + gang + "): falla la revalidacion " + where + " (" + reason + ") pero ya esta localizada: no se muda");
             return 0;
         }
         let current: Int32 = this.GetChosen(site) - 1;
         if badPosts && current >= 0 && current < this.m_candCount {
             this.m_candBad[current] = true;
         }
-        GRLog("Guarida (" + gang + "): falla la revalidacion " + where + " de " + this.SiteLabel(site) + " (" + reason + "), se muda en silencio");
+        this.Log("Guarida (" + gang + "): falla la revalidacion " + where + " de " + this.SiteLabel(site) + " (" + reason + "), se muda en silencio");
         if this.Relocate(site, "revalidacion") {
             return 2;
         }
@@ -1284,7 +1293,7 @@ public class GRStronghold extends ScriptableSystem {
             if !this.m_populating && !this.m_cleared && spawner.CountStanding() == 0 {
                 this.m_cleared = true;
                 ArrayPush(this.m_events, "cleared:" + gang);
-                GRLog("Guarida (" + gang + "): tomada");
+                this.Log("Guarida (" + gang + "): tomada");
                 if this.Relocate(this.m_activeSite, "tomada") {
                     let intel: ref<GRIntelSystem> = GRIntelSystem.Get(this.GetGameInstance());
                     if IsDefined(intel) {
@@ -1299,7 +1308,7 @@ public class GRStronghold extends ScriptableSystem {
                 this.m_active = false;
                 this.StopPopulating();
                 ArrayPush(this.m_events, "left:" + gang);
-                GRLog("Guarida (" + gang + "): V se fue, se recogen");
+                this.Log("Guarida (" + gang + "): V se fue, se recogen");
             }
             return;
         }
@@ -1529,7 +1538,7 @@ public class GRStronghold extends ScriptableSystem {
         this.m_placed = 0;
         this.m_failed = 0;
         this.m_fillStats = [0, 0, 0, 0, 0];
-        GRLog("Guarida (" + gang + "): V a " + IntToString(Cast<Int32>(this.GetSiteDistance(site))) + " m, "
+        this.Log("Guarida (" + gang + "): V a " + IntToString(Cast<Int32>(this.GetSiteDistance(site))) + " m, "
             + IntToString(ArraySize(this.m_pending)) + " puestos por ocupar");
         this.FillPosts(spawner, player);
     }
@@ -2287,7 +2296,7 @@ public class GRIntelSystem extends ScriptableSystem {
             }
         }
         StatusEffectHelper.ApplyStatusEffect(npc, t"BaseStatusEffect.Unconscious");
-        GRLog("Intel: " + gang + " inconsciente para extraer (" + GRIntelSystem.RankName(rank) + ", vida " + IntToString(RoundF(health))
+        GRLog("Intel: " + gang + " inconsciente (" + GRIntelSystem.RankName(rank) + ", vida " + IntToString(RoundF(health))
             + "% <= " + IntToString(RoundF(threshold)) + "%) " + TDBID.ToStringDEBUG(npc.GetRecordID()));
         this.QueueShard(npc.GetEntityID(), this.NemesisIdOf(npc.GetEntityID()), rank,
             rank > 0 ? GRIntelCall.GiveShardNemesis() : GRIntelCall.GiveShard());

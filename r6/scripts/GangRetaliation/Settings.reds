@@ -55,6 +55,16 @@ public class GRSettings extends ScriptableSystem {
     @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatGeneral")
     @runtimeProperty("ModSettings.category.order", "10")
+    @runtimeProperty("ModSettings.displayName", "GR-SetIntelDropChance")
+    @runtimeProperty("ModSettings.description", "GR-SetIntelDropChanceDesc")
+    @runtimeProperty("ModSettings.step", "1")
+    @runtimeProperty("ModSettings.min", "0")
+    @runtimeProperty("ModSettings.max", "25")
+    public let intelDropPercent: Int32 = 10;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatGeneral")
+    @runtimeProperty("ModSettings.category.order", "10")
     @runtimeProperty("ModSettings.displayName", "GR-SetBossBar")
     @runtimeProperty("ModSettings.description", "GR-SetBossBarDesc")
     public let bossBar: Bool = true;
@@ -173,6 +183,16 @@ public class GRSettings extends ScriptableSystem {
     @runtimeProperty("ModSettings.min", "10")
     @runtimeProperty("ModSettings.max", "60")
     public let fleeHealthPercent: Int32 = 35;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatTriggers")
+    @runtimeProperty("ModSettings.category.order", "20")
+    @runtimeProperty("ModSettings.displayName", "GR-SetCorpseRemoval")
+    @runtimeProperty("ModSettings.description", "GR-SetCorpseRemovalDesc")
+    @runtimeProperty("ModSettings.step", "5")
+    @runtimeProperty("ModSettings.min", "5")
+    @runtimeProperty("ModSettings.max", "120")
+    public let corpseRemovalSeconds: Int32 = 30;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatAmbush")
