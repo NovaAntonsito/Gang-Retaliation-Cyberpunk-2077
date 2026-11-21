@@ -413,7 +413,7 @@ public class GRDetection extends ScriptableSystem {
             GRDetectionCall.SendDelayed(this.GetGameInstance(), GRDetectionCall.RunDisarmedFlee(), id, 0.3);
             return;
         }
-        let blocker: String = this.GetFleeBlocker(npc);
+        let blocker: String = this.GetFleeBlocker(npc, true);
         if StrLen(blocker) > 0 {
             this.Debug("Huida por desarme cancelada: " + blocker);
             return;
@@ -440,7 +440,7 @@ public class GRDetection extends ScriptableSystem {
             // hit instead of just the rare, meaningful cases.
             return;
         }
-        let blocker: String = this.GetFleeBlocker(npc);
+        let blocker: String = this.GetFleeBlocker(npc, true);
         if StrLen(blocker) > 0 {
             this.Debug("Huida por desarme (retrasada) cancelada: " + blocker);
             return;
@@ -507,7 +507,12 @@ public class GRDetection extends ScriptableSystem {
         return spawner.HasLineOfSight(player, npc.GetWorldPosition());
     }
 
-    public func GetFleeBlocker(npc: ref<ScriptedPuppet>) -> String {
+    // ignoreRaid: 2026-11-22, user's call - a disarmed/dismembered NPC should still try to flee even
+    // during a raid (the alternative was cowering uselessly in place, which looked broken even though the
+    // raid-wide no-flee rule is intentional for the ordinary last-man-standing case). Only the two
+    // disarmed-flee call sites below pass true; CheckLastStanding and the HUD's cosmetic "can flee"
+    // indicator keep the raid block as-is.
+    public func GetFleeBlocker(npc: ref<ScriptedPuppet>, opt ignoreRaid: Bool) -> String {
         let gi: GameInstance = this.GetGameInstance();
         let settings: ref<GRSettings> = GRSettings.Get(gi);
         if !IsDefined(settings) || !settings.enabled || !settings.lastManFlees {
@@ -517,7 +522,7 @@ public class GRDetection extends ScriptableSystem {
             return "not eligible";
         }
         let spawner: ref<GRSpawner> = GRSpawner.Get(gi);
-        if IsDefined(spawner) && spawner.IsRaidActive() {
+        if !ignoreRaid && IsDefined(spawner) && spawner.IsRaidActive() {
             return "raid";
         }
         if VehicleComponent.IsMountedToVehicle(gi, npc) || VehicleComponent.IsMountedToVehicle(gi, GetPlayer(gi)) {
