@@ -149,10 +149,6 @@ public class GRDetection extends ScriptableSystem {
         return !IsDefined(npc) || npc.IsDead() || ScriptedPuppet.IsDefeated(npc) || ScriptedPuppet.IsUnconscious(npc);
     }
 
-    // Being in combat, or even having V on this NPC's hostile-threat list, isn't enough:
-    // a barrel explosion or a remote quickhack can alert and injure them without them ever
-    // actually spotting V (a tracked threat can be a last-known/suspected position, not a
-    // confirmed sighting). TrackedLocation.visible is the strict "has actually seen V" flag.
     public static func IsAwareOfPlayer(npc: ref<ScriptedPuppet>, player: ref<PlayerPuppet>) -> Bool {
         if !IsDefined(npc) || !IsDefined(player) {
             return false;
@@ -962,11 +958,6 @@ public class GRDetection extends ScriptableSystem {
         }
     }
 
-    // forceKnockout is for a non-lethal grapple/finisher takedown (LocomotionTakedownEvents.DefeatTarget,
-    // Stronghold.reds): the takedown animation itself guarantees the NPC goes unconscious regardless of
-    // their actual health - most of the time the whole point is a quiet takedown on someone still at or
-    // near full health - so TryKnockOut's normal "health <= flee threshold" gate would otherwise reject it
-    // and silently skip the intel shard for every "clean" non-lethal takedown.
     private func OnPlayerHitNPC(npc: ref<ScriptedPuppet>, forceKnockout: Bool) {
         let hiding: ref<GRCandidate> = this.FindHiding(npc.GetEntityID());
         if IsDefined(hiding) {
@@ -1471,18 +1462,6 @@ public func EvaluateHit(newHitEvent: ref<gameHitEvent>) -> Void {
     }
 }
 
-// Grapple/finisher takedowns (both lethal and non-lethal) never fire a gameHitEvent, so EvaluateHit above
-// never sees them - the grappled NPC was never added as a candidate, never promotion-eligible, and never
-// given an intel shard even with the gang's attention already on V. DefeatTarget is the one place the
-// native takedown state machine calls unconditionally for every takedown type (the switch above it in
-// SelectSyncedAnimationAndExecuteAction only picks the animation/effect tag), so hook it here and feed the
-// same pipeline EvaluateHit already uses instead of duplicating candidate/intel logic.
-// effectTag tells us whether this was a non-lethal knockout ("setUnconscious"/"setUnconsciousAerialTakedown"/
-// "setUnconsciousTakedownMassiveTarget"/"setUnconsciousTakedownNetrunner" - all contain "Unconscious") or a
-// lethal one ("kill"): only the non-lethal case needs PlayerTakedownNPC's forced-knockout handling, since a
-// takedown (same as a jump/aerial one) can knock someone out from full health with no health-chipping
-// involved - the lethal case still benefits from normal candidate tracking, but the kill itself is already
-// attributed separately via the existing NPCPuppet.OnDeath wrap below.
 @wrapMethod(LocomotionTakedownEvents)
 private final func DefeatTarget(stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>, activator: wref<GameObject>, target: wref<GameObject>, effectName: CName, effectTag: CName) -> Void {
     wrappedMethod(stateContext, scriptInterface, activator, target, effectName, effectTag);

@@ -34,6 +34,10 @@ public class GRSpawner extends ScriptableSystem {
     private let m_deathKinds: array<String>;
     private let m_deathEntityIDs: array<EntityID>;
     private let m_deathSince: array<Float>;
+    private let m_bountyIds: array<Int32>;
+    private let m_bountyKinds: array<String>;
+    private let m_bountyCauses: array<String>;
+    private let m_bountyLairs: array<Bool>;
 
     // Keeps a Nemesis's scanner name attached to their corpse's EntityID after MarkDead()
     // zeroes the m_nemesisIDs/m_leftNemesis slot that GetNemesisName() would otherwise read.
@@ -484,6 +488,7 @@ public class GRSpawner extends ScriptableSystem {
             this.RemoveMappin(index);
             if this.m_nemesisIDs[index] > 0 {
                 this.RememberDeadName(id, this.m_speakers[index]);
+                this.GiveDownShard(id, this.m_nemesisIDs[index]);
                 this.RecordDeath(this.m_nemesisIDs[index], npc, id);
                 this.m_nemesisIDs[index] = 0;
             }
@@ -492,8 +497,16 @@ public class GRSpawner extends ScriptableSystem {
         let left: Int32 = this.LeftoverIndex(id);
         if left >= 0 && this.m_leftNemesis[left] > 0 {
             this.RememberDeadName(id, this.m_leftNames[left]);
+            this.GiveDownShard(id, this.m_leftNemesis[left]);
             this.RecordDeath(this.m_leftNemesis[left], npc, id);
             this.m_leftNemesis[left] = 0;
+        }
+    }
+
+    private func GiveDownShard(id: EntityID, nemesisId: Int32) {
+        let intel: ref<GRIntelSystem> = GRIntelSystem.Get(this.GetGameInstance());
+        if IsDefined(intel) {
+            intel.OnNemesisDown(id, nemesisId, Max(1, this.GetNemesisRank(id)));
         }
     }
 
@@ -516,6 +529,11 @@ public class GRSpawner extends ScriptableSystem {
         }
         ArrayPush(this.m_deathKinds, kind);
         ArrayPush(this.m_deathCauses, cause);
+        let strongholdRef: ref<GRStronghold> = GRStronghold.Get(this.GetGameInstance());
+        ArrayPush(this.m_bountyIds, nemesisId);
+        ArrayPush(this.m_bountyKinds, kind);
+        ArrayPush(this.m_bountyCauses, cause);
+        ArrayPush(this.m_bountyLairs, IsDefined(strongholdRef) && strongholdRef.SpawnedInLair(nemesisId));
         ArrayRemove(this.m_finisherIds, nemesisId);
         ArrayRemove(this.m_headRemovedIds, id);
         GRLog("Nemesis #" + IntToString(nemesisId) + " muerto (" + kind + ", " + cause + ", decapitado=" + (headRemoved ? "si" : "no") + ")");
@@ -580,9 +598,6 @@ public class GRSpawner extends ScriptableSystem {
         if ArrayContains(this.m_finisherIds, nemesisId) {
             return "confirmed";
         }
-        // Non-head dismemberment no longer forces "confirmed" here - a limb-missing Nemesis still returns
-        // normally (chromed, same as any other return). Head removal alone stays permanent, handled separately
-        // via m_headRemovedIds in RecordDeath().
         return "normal";
     }
 
@@ -808,6 +823,12 @@ public class GRSpawner extends ScriptableSystem {
             this.m_objectiveSource = "not an objective";
             return -1.0;
         }
+        // El encargo propio del Bounty Board (GigZone.reds, StreetStory gr_bounty_1) no cuenta como "objetivo de mision": su pin esta en el centro
+        // de la zona de caza y bloqueaba al Nemesis (y las emboscadas) mientras V estuviera a menos de 150 m.
+        if GRGigZone.IsGigObjective(gi, objective) {
+            this.m_objectiveSource = "own gig (ignored)";
+            return -1.0;
+        }
         let positions: array<Vector3>;
         mappins.GetQuestMappinPositionsByObjective(Cast<Uint32>(journal.GetEntryHash(objective)), positions);
         this.m_objectivePins = ArraySize(positions);
@@ -848,6 +869,9 @@ public class GRSpawner extends ScriptableSystem {
     public func IsStoryQuestTracked() -> Bool {
         let quest: wref<JournalQuest> = this.GetTrackedQuest();
         if !IsDefined(quest) {
+            return false;
+        }
+        if GRGigZone.IsGigQuest(this.GetGameInstance(), quest) {
             return false;
         }
         let questType: gameJournalQuestType = quest.GetType();
@@ -1818,6 +1842,10 @@ public class GRSpawner extends ScriptableSystem {
         if IsDefined(twr) {
             twr.Tick();
         }
+        let bounties: ref<GRBounties> = GRBounties.Get(this.GetGameInstance());
+        if IsDefined(bounties) {
+            bounties.Tick();
+        }
         this.CheckNeutralized();
         this.CheckTaunts();
         this.TickImmunity();
@@ -2337,6 +2365,20 @@ public class GRSpawner extends ScriptableSystem {
         ArrayErase(this.m_deathCauses, index);
         ArrayErase(this.m_deathEntityIDs, index);
         ArrayErase(this.m_deathSince, index);
+    }
+
+    public func DrainBountyDeaths(bounties: ref<GRBounties>) {
+        while ArraySize(this.m_bountyIds) > 0 {
+            let id: Int32 = this.m_bountyIds[0];
+            let kind: String = this.m_bountyKinds[0];
+            let cause: String = this.m_bountyCauses[0];
+            let lair: Bool = this.m_bountyLairs[0];
+            ArrayErase(this.m_bountyIds, 0);
+            ArrayErase(this.m_bountyKinds, 0);
+            ArrayErase(this.m_bountyCauses, 0);
+            ArrayErase(this.m_bountyLairs, 0);
+            bounties.OnDeath(id, kind, cause, lair);
+        }
     }
 
     public func ClearDeaths() {

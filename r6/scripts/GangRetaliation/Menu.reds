@@ -45,6 +45,8 @@ public class GRMenuData extends ScriptableSystem {
     private let m_page: Int32;
     private let m_arsenalPage: Int32;
     private let m_pendingView: Int32;
+    private let m_bountyMode: Bool;
+    private let m_bountyLayoutLogged: Bool;
 
     public static func Get(gi: GameInstance) -> ref<GRMenuData> {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRMenuData") as GRMenuData;
@@ -88,6 +90,24 @@ public class GRMenuData extends ScriptableSystem {
         GRLog("Menu: API OpenView -> " + NameToString(view) + " (evento OnGangRetaliationApiOpenView)");
         dispatcher.SpawnEvent(n"OnGangRetaliationApiOpenView");
         return true;
+    }
+
+    public func SetBountyMode(on: Bool) {
+        this.m_bountyMode = on;
+    }
+
+    public func ConsumeBountyLayoutLog() -> Bool {
+        if this.m_bountyLayoutLogged {
+            return false;
+        }
+        this.m_bountyLayoutLogged = true;
+        return true;
+    }
+
+    public func ConsumeBountyMode() -> Bool {
+        let on: Bool = this.m_bountyMode;
+        this.m_bountyMode = false;
+        return on;
     }
 
     public func ConsumePendingView() -> Int32 {
@@ -335,6 +355,18 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     private let m_intelFill: wref<inkRectangle>;
     private let m_intelValue: wref<inkText>;
     private let m_intelLocated: wref<inkText>;
+    private let m_bounty: Bool;
+    private let m_bounties: ref<GRBounties>;
+    private let m_bContracts: array<ref<GRBounty>>;
+    private let m_bView: Int32;
+    private let m_bFixer: Int32;
+    private let m_bSel: Int32;
+    private let m_bToday: Int32;
+    private let m_bViewTexts: array<wref<inkText>>;
+    private let m_bCards: array<Int32>;
+    private let m_bFrames: array<wref<inkImage>>;
+    private let m_bFixerNames: array<String>;
+    private let m_bHint: Bool;
 
     private func Red() -> HDRColor {
         return new HDRColor(1.1761, 0.3809, 0.3476, 1.0);
@@ -346,6 +378,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
 
     private func Gold() -> HDRColor {
         return new HDRColor(1.1192, 0.8441, 0.2565, 1.0);
+    }
+
+    // Magenta: etiqueta y linea del contrato ESPECIAL de Rogue (distinto del dorado del dinero y de las etiquetas de estado).
+    private func Special() -> HDRColor {
+        return new HDRColor(1.1, 0.42, 0.95, 1.0);
     }
 
     private func Grey() -> HDRColor {
@@ -420,6 +457,13 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
 
     protected cb func OnInitialize() -> Bool {
         this.m_data = GRMenuData.Get(this.GetPlayerControlledObject().GetGame());
+        if IsDefined(this.m_data) && this.m_data.ConsumeBountyMode() {
+            this.m_bounty = true;
+            this.InitBounty();
+            super.OnInitialize();
+            this.BringToFront();
+            return true;
+        }
         this.m_page = IsDefined(this.m_data) ? this.m_data.GetPage() : 0;
         this.m_arsenalPage = IsDefined(this.m_data) ? this.m_data.GetArsenalPage() : 0;
         this.m_rewards = GRRewards.Get(this.GetPlayerControlledObject().GetGame());
@@ -432,7 +476,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let root: ref<inkCompoundWidget> = this.GetRootCompoundWidget();
 
         this.CreateBackground(root);
-        this.CreateHeader(root);
+        this.CreateHeader(root, "GR-MenuTitle");
         this.CreateRankLabels(root);
 
         let tree: ref<inkCanvas> = new inkCanvas();
@@ -446,7 +490,15 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.CreateArsenal(root);
         this.CreateViewSwitch(root);
         this.CreateFusion(root);
+        this.CreateHints(root);
 
+        this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnGRGlobalInput");
+        this.Refresh();
+        super.OnInitialize();
+        this.BringToFront();
+    }
+
+    private func CreateHints(root: ref<inkCompoundWidget>) {
         let hints: ref<inkCanvas> = new inkCanvas();
         hints.SetName(n"button_hints");
         hints.SetAnchor(inkEAnchor.BottomRight);
@@ -458,16 +510,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             this.m_buttonHints.AddButtonHint(n"back", "Common-Access-Close");
             this.m_buttonHints.AddButtonHint(n"sort_list", this.T("GR-MenuHintView"));
         }
-
-        this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnGRGlobalInput");
-        this.Refresh();
-        super.OnInitialize();
-        this.BringToFront();
     }
 
     protected cb func OnUninitialize() -> Bool {
         this.UnregisterFromGlobalInputCallback(n"OnPostOnRelease", this, n"OnGRGlobalInput");
-        if IsDefined(this.m_data) {
+        if IsDefined(this.m_data) && !this.m_bounty {
             this.m_data.SetPage(this.m_page);
             this.m_data.SetArsenalPage(this.m_arsenalPage);
         }
@@ -618,11 +665,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return icon;
     }
 
-    private func CreateHeader(root: ref<inkCompoundWidget>) {
+    private func CreateHeader(root: ref<inkCompoundWidget>, titleKey: String) {
         this.AddFullLine(root, 150.0);
         this.AddFullLine(root, 336.0);
 
-        let title: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuTitle")), 64, this.Red(), n"Medium");
+        let title: ref<inkText> = this.NewText(this.Up(this.T(titleKey)), 64, this.Red(), n"Medium");
         title.SetAnchor(inkEAnchor.TopLeft);
         title.SetMargin(new inkMargin(120.0, 184.0, 0.0, 0.0));
         title.Reparent(root);
@@ -1404,6 +1451,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     private func AddStat(parent: ref<inkCompoundWidget>, value: Int32, label: String) {
+        this.AddStatText(parent, IntToString(value), label, this.Light());
+    }
+
+    private func AddStatText(parent: ref<inkCompoundWidget>, value: String, label: String, color: HDRColor) {
         let box: ref<inkCanvas> = new inkCanvas();
         box.SetSize(new Vector2(208.0, 130.0));
         box.SetMargin(new inkMargin(0.0, 0.0, 14.0, 0.0));
@@ -1413,7 +1464,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         content.SetAnchor(inkEAnchor.Fill);
         content.SetMargin(new inkMargin(20.0, 10.0, 10.0, 10.0));
         content.Reparent(box);
-        this.NewText(IntToString(value), 64, this.Light(), n"Bold").Reparent(content);
+        this.NewText(value, 64, color, n"Bold").Reparent(content);
         this.NewText(label, 24, this.Light(), n"Bold").Reparent(content);
     }
 
@@ -2554,6 +2605,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         ArrayPush(this.m_aCards, weaponIndex);
         let name: String = this.m_rewards.GetOwnedName(weaponIndex);
         let equipped: Bool = this.m_rewards.IsOwnedEquipped(weaponIndex);
+        let stashed: Bool = this.m_rewards.IsOwnedStashed(weaponIndex);
 
         let card: ref<inkCanvas> = new inkCanvas();
         card.SetName(StringToName("gr_weapon_" + IntToString(index)));
@@ -2602,6 +2654,12 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
                 tag.SetMargin(new inkMargin(0.0, 0.0, 0.0, 18.0));
                 tag.Reparent(column);
             }
+            if stashed {
+                let stashTag: ref<inkCompoundWidget> = this.NewTag(this.T("GR-MenuInStash"), 26, this.Grey());
+                stashTag.SetHAlign(inkEHorizontalAlign.Left);
+                stashTag.SetMargin(new inkMargin(0.0, 0.0, 0.0, 18.0));
+                stashTag.Reparent(column);
+            }
             let title: ref<inkText> = this.NewWrappedText(name, 80, this.Gold(), 1170.0);
             title.SetFontStyle(n"Bold");
             title.Reparent(column);
@@ -2632,6 +2690,11 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
                 smallTag.SetMargin(new inkMargin(16.0, 0.0, 0.0, 0.0));
                 smallTag.Reparent(top);
             }
+            if stashed {
+                let smallStash: ref<inkCompoundWidget> = this.NewTag(this.T("GR-MenuInStash"), 20, this.Grey());
+                smallStash.SetMargin(new inkMargin(16.0, 0.0, 0.0, 0.0));
+                smallStash.Reparent(top);
+            }
             let smallName: ref<inkText> = this.NewWrappedText(name, 36, this.Light(), 540.0);
             smallName.SetFontStyle(n"Bold");
             smallName.SetMargin(new inkMargin(0.0, 8.0, 0.0, 0.0));
@@ -2660,6 +2723,12 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             tag.SetHAlign(inkEHorizontalAlign.Left);
             tag.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
             tag.Reparent(panel);
+        }
+        if this.m_rewards.IsOwnedStashed(weaponIndex) {
+            let stashTag: ref<inkCompoundWidget> = this.NewTag(this.T("GR-MenuInStash"), 26, this.Grey());
+            stashTag.SetHAlign(inkEHorizontalAlign.Left);
+            stashTag.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
+            stashTag.Reparent(panel);
         }
 
         this.AddSection(panel, this.T("GR-MenuElement"), 44.0);
@@ -2795,7 +2864,8 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let w: Int32 = 0;
         while w < owned {
             if Equals(this.m_rewards.GetOwnedGang(w), gangKey) {
-                let score: Int32 = RoundF(this.m_rewards.GetOwnedBonusF(w) * 10.0) + (this.m_rewards.IsOwnedEquipped(w) ? 10000 : 0);
+                let score: Int32 = RoundF(this.m_rewards.GetOwnedBonusF(w) * 10.0) + (this.m_rewards.IsOwnedEquipped(w) ? 10000 : 0)
+                    + (this.m_rewards.IsOwnedStashed(w) ? 0 : 20000);
                 if score > mainScore {
                     mainScore = score;
                     main = w;
@@ -2857,12 +2927,28 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let owned: Int32 = this.m_rewards.GetOwnedCount();
         let w: Int32 = 0;
         while w < owned {
-            if w != main && Equals(this.m_rewards.GetOwnedGang(w), gang) && !this.m_rewards.IsOwnedEquipped(w) {
+            if w != main && Equals(this.m_rewards.GetOwnedGang(w), gang) && !this.m_rewards.IsOwnedEquipped(w) && !this.m_rewards.IsOwnedStashed(w) {
                 ArrayPush(result, w);
             }
             w += 1;
         }
         return result;
+    }
+
+    private func HasStashedCopy(main: Int32) -> Bool {
+        if main < 0 || !IsDefined(this.m_rewards) {
+            return false;
+        }
+        let gang: String = this.m_rewards.GetOwnedGang(main);
+        let owned: Int32 = this.m_rewards.GetOwnedCount();
+        let w: Int32 = 0;
+        while w < owned {
+            if w != main && Equals(this.m_rewards.GetOwnedGang(w), gang) && this.m_rewards.IsOwnedStashed(w) {
+                return true;
+            }
+            w += 1;
+        }
+        return false;
     }
 
     private func AddAugmentButton(detail: ref<inkCanvas>) {
@@ -2895,13 +2981,13 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let text: String;
         if this.m_rewards.IsOwnedMaxed(main) {
             text = this.T("GR-MenuAugMaxed");
+        } else if this.m_rewards.IsOwnedStashed(main) || (count == 0 && this.HasStashedCopy(main)) {
+            text = this.T("GR-MenuAugStashed");
+        } else if count == 0 {
+            text = this.Fmt(this.T("GR-MenuAugNoCopies"), "%s", this.ArsenalGangLabel(this.m_rewards.GetOwnedGang(main)));
         } else {
-            if count == 0 {
-                text = this.Fmt(this.T("GR-MenuAugNoCopies"), "%s", this.ArsenalGangLabel(this.m_rewards.GetOwnedGang(main)));
-            } else {
-                this.m_augReady = true;
-                text = count == 1 ? this.T("GR-MenuAugReadyOne") : this.Fmt(this.T("GR-MenuAugReady"), "%d", IntToString(count));
-            }
+            this.m_augReady = true;
+            text = count == 1 ? this.T("GR-MenuAugReadyOne") : this.Fmt(this.T("GR-MenuAugReady"), "%d", IntToString(count));
         }
         this.m_augBorder.SetTintColor(this.m_augReady ? this.Cyan() : this.Dim());
         this.m_augTitle.SetTintColor(this.m_augReady ? this.Cyan() : this.Dim());
@@ -3020,6 +3106,9 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             return;
         }
         let main: Int32 = this.m_aCards[0];
+        if this.m_rewards.IsOwnedStashed(main) {
+            return;
+        }
         let copies: array<Int32> = this.FusableCopies(main);
         if ArraySize(copies) == 0 {
             return;
@@ -3363,6 +3452,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     private func ChangePage(delta: Int32) {
+        if this.m_bounty {
+            this.BountyChangeFixer(delta);
+            return;
+        }
         if this.m_view == 1 || this.m_fOpen {
             return;
         }
@@ -3397,6 +3490,17 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             return false;
         }
         let target: CName = evt.GetCurrentTarget().GetName();
+        if this.m_bounty {
+            let t: Int32 = 0;
+            while t < ArraySize(this.m_bFixerNames) {
+                if Equals(target, StringToName("gr_tab_" + IntToString(t))) && t != this.m_bFixer {
+                    this.BountyChangeFixer(t - this.m_bFixer);
+                    return true;
+                }
+                t += 1;
+            }
+            return false;
+        }
         let gangs: array<String> = IsDefined(this.m_data) ? this.m_data.GetGangs() : [];
         let arsenalGangs: array<String> = this.ArsenalGangs();
         let count: Int32 = this.m_view == 2 ? ArraySize(arsenalGangs) : ArraySize(gangs);
@@ -3498,6 +3602,783 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return false;
     }
 
+    private func InitBounty() {
+        this.m_bounties = GRBounties.Get(this.GetPlayerControlledObject().GetGame());
+        this.m_bSel = -1;
+        let root: ref<inkCompoundWidget> = this.GetRootCompoundWidget();
+        this.CreateBackground(root);
+        this.CreateHeader(root, "GR-BountyTitle");
+
+        let board: ref<inkCanvas> = new inkCanvas();
+        board.SetName(n"bounty_board");
+        board.SetAnchor(inkEAnchor.Fill);
+        board.Reparent(root);
+        this.m_tree = board;
+
+        this.CreateDetail(root);
+        this.CreateBountyViewSwitch(root);
+        this.CreateHints(root);
+        this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnGRGlobalInput");
+        this.FillBounty();
+        GRLog("Menu: tablero de recompensas abierto (" + IntToString(ArraySize(this.m_bContracts)) + " contratos)");
+    }
+
+    private func CreateBountyViewSwitch(root: ref<inkCompoundWidget>) {
+        let panel: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        panel.SetName(n"bounty_view_switch");
+        panel.SetAnchor(inkEAnchor.TopLeft);
+        panel.SetMargin(new inkMargin(120.0, 258.0, 0.0, 0.0));
+        panel.SetFitToContent(true);
+        panel.Reparent(root);
+
+        let key: ref<inkCompoundWidget> = this.NewTag("TAB", 22, this.Cyan());
+        key.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+        key.Reparent(panel);
+
+        let keys: array<String> = ["GR-BountyViewOpen", "GR-BountyViewPaid", "GR-BountyViewFailed"];
+        let i: Int32 = 0;
+        while i < ArraySize(keys) {
+            if i > 0 {
+                let sep: ref<inkText> = this.NewText("  |  ", 32, this.Dim(), n"Medium");
+                sep.SetVAlign(inkEVerticalAlign.Center);
+                sep.Reparent(panel);
+            }
+            let label: ref<inkText> = this.NewText(this.Up(this.T(keys[i])), 32, this.Grey(), n"Bold");
+            label.SetName(StringToName("gr_bview_" + IntToString(i)));
+            label.SetVAlign(inkEVerticalAlign.Center);
+            label.SetInteractive(true);
+            label.RegisterToCallback(n"OnRelease", this, n"OnGRBountyViewClick");
+            label.Reparent(panel);
+            ArrayPush(this.m_bViewTexts, label);
+            i += 1;
+        }
+    }
+
+    private func Money(amount: Int32) -> String {
+        return GRBounties.Money(amount, this.T("GR-BountySep"));
+    }
+
+    private func BountyEntry(nemesisId: Int32) -> ref<GRMenuEntry> {
+        if !IsDefined(this.m_data) {
+            return null;
+        }
+        let entries: array<ref<GRMenuEntry>> = this.m_data.GetEntries();
+        for entry in entries {
+            if entry.id == nemesisId {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private func BountyName(entry: ref<GRMenuEntry>) -> String {
+        if IsDefined(entry) && StrLen(entry.name) > 0 {
+            return entry.name;
+        }
+        return this.T("GR-BountyUnknown");
+    }
+
+    private func BountyGang(c: ref<GRBounty>, entry: ref<GRMenuEntry>) -> String {
+        if IsDefined(entry) && StrLen(entry.gang) > 0 {
+            return entry.gang;
+        }
+        return GRIntelSystem.GangLabel(c.gang);
+    }
+
+    private func BountyColor(c: ref<GRBounty>) -> HDRColor {
+        return c.rank >= 3 ? this.Gold() : this.Red();
+    }
+
+    private func BountyDaysLeft(c: ref<GRBounty>) -> Int32 {
+        return Max(1, c.expire - this.m_bToday);
+    }
+
+    private func DaysLeftText(days: Int32) -> String {
+        if days == 1 {
+            return this.T("GR-BountyDayLeft");
+        }
+        return StrReplaceAll(this.T("GR-BountyDaysLeft"), "{n}", IntToString(days));
+    }
+
+    private func BountyWeakList(entry: ref<GRMenuEntry>) -> String {
+        let out: String = "";
+        if !IsDefined(entry) {
+            return out;
+        }
+        let lines: array<String> = this.TraitLines(entry);
+        for line in lines {
+            let parts: array<String> = StrSplit(line, "|");
+            if ArraySize(parts) >= 2 && Equals(parts[0], "-") {
+                out += StrLen(out) > 0 ? ", " + parts[1] : parts[1];
+            }
+        }
+        return out;
+    }
+
+    private func ContractAt(index: Int32) -> ref<GRBounty> {
+        for c in this.m_bContracts {
+            if c.index == index {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private func StyleBountyFrame(frame: wref<inkImage>, c: ref<GRBounty>, selected: Bool) {
+        if !IsDefined(c) {
+            return;
+        }
+        frame.SetTintColor(selected ? this.Cyan() : this.BountyColor(c));
+        frame.SetOpacity(selected || GRBounties.IsOpenState(c.state) ? 1.0 : 0.6);
+    }
+
+    private func BountyStateTag(c: ref<GRBounty>, size: Int32) -> ref<inkCompoundWidget> {
+        if c.state == 3 {
+            return this.NewTag(this.Up(this.T("GR-BountyOfferTag")), size, this.Cyan());
+        }
+        if c.state == 0 {
+            return this.NewTag(this.Up(this.T("GR-BountyAcceptedTag")), size, this.Gold());
+        }
+        return null;
+    }
+
+    private func BountyReward(c: ref<GRBounty>) -> String {
+        return this.Money(c.state == 1 ? c.paid : c.pay) + " · " + GRBounties.Xp(c.xp, this.T("GR-BountySep"));
+    }
+
+    private func FillBounty() {
+        this.m_tree.RemoveAllChildren();
+        ArrayClear(this.m_bCards);
+        ArrayClear(this.m_bFrames);
+        let all: array<ref<GRBounty>>;
+        if IsDefined(this.m_bounties) {
+            all = this.m_bounties.GetContracts();
+            this.m_bToday = this.m_bounties.GetToday();
+        }
+        this.m_bContracts = all;
+
+        let open: Int32 = 0;
+        let accepted: Int32 = 0;
+        let paid: Int32 = 0;
+        let failed: Int32 = 0;
+        let earned: Int32 = 0;
+        for c in all {
+            if GRBounties.IsOpenState(c.state) {
+                open += 1;
+            }
+            if c.state == 0 {
+                accepted += 1;
+            }
+            if c.state == 1 {
+                paid += 1;
+                earned += c.paid;
+            }
+            if c.state == 2 {
+                failed += 1;
+            }
+        }
+        this.m_summary.SetText(this.Up(this.T("GR-BountyViewOpen")) + " " + IntToString(open) + "   |   " + this.Up(this.T("GR-BountyViewPaid")) + " " + IntToString(paid)
+            + "   |   " + this.Up(this.T("GR-BountyViewFailed")) + " " + IntToString(failed) + "   |   " + this.Money(earned));
+        let v: Int32 = 0;
+        while v < ArraySize(this.m_bViewTexts) {
+            this.m_bViewTexts[v].SetTintColor(v == this.m_bView ? this.Cyan() : this.Grey());
+            v += 1;
+        }
+
+        let inView: array<ref<GRBounty>>;
+        if this.m_bView == 0 {
+            for c in all {
+                if c.state == 3 {
+                    ArrayPush(inView, c);
+                }
+            }
+            for c in all {
+                if c.state == 0 {
+                    ArrayPush(inView, c);
+                }
+            }
+        } else {
+            let k: Int32 = ArraySize(all) - 1;
+            while k >= 0 {
+                if all[k].state == this.m_bView {
+                    ArrayPush(inView, all[k]);
+                }
+                k -= 1;
+            }
+        }
+
+        let fixers: array<String>;
+        ArrayPush(fixers, "");
+        for c in inView {
+            let name: String = GRBounties.FixerName(c.fixer);
+            if !ArrayContains(fixers, name) {
+                ArrayPush(fixers, name);
+            }
+        }
+        let count: Int32 = ArraySize(fixers);
+        this.m_bFixer = ((this.m_bFixer % count) + count) % count;
+        this.m_bFixerNames = fixers;
+        if ArraySize(this.m_tabTexts) != count {
+            this.m_marks.RemoveAllChildren();
+            ArrayClear(this.m_tabTexts);
+            ArrayClear(this.m_tabBars);
+            ArrayClear(this.m_tabThreats);
+            let t: Int32 = 0;
+            while t < count {
+                this.AddTab(t);
+                t += 1;
+            }
+        }
+        let i: Int32 = 0;
+        while i < count {
+            let threat: Bool = false;
+            if i > 0 {
+                for c in all {
+                    if GRBounties.IsOpenState(c.state) && Equals(GRBounties.FixerName(c.fixer), fixers[i]) {
+                        threat = true;
+                    }
+                }
+            }
+            this.StyleTab(i, i == 0 ? this.T("GR-BountyAllFixers") : fixers[i], i == this.m_bFixer, threat);
+            i += 1;
+        }
+
+        let filter: String = fixers[this.m_bFixer];
+        let shown: array<ref<GRBounty>>;
+        for c in inView {
+            if StrLen(filter) == 0 || Equals(GRBounties.FixerName(c.fixer), filter) {
+                ArrayPush(shown, c);
+            }
+        }
+        this.m_gangTitle.SetText(this.Up(StrLen(filter) == 0 ? this.T("GR-BountyAllFixers") : filter));
+        this.m_gangCount.SetText(IntToString(ArraySize(shown)));
+
+        let selected: ref<GRBounty>;
+        for c in shown {
+            if c.index == this.m_bSel {
+                selected = c;
+            }
+        }
+        if !IsDefined(selected) && ArraySize(shown) > 0 {
+            selected = shown[0];
+        }
+        this.m_bSel = IsDefined(selected) ? selected.index : -1;
+
+        let left: Float = 120.0;
+        let width: Float = 2500.0;
+        let labelKey: String = "GR-BountyAcceptedContracts";
+        let value: String = IntToString(accepted) + " / " + IntToString(GRBounties.MaxOpen());
+        let valueColor: HDRColor = this.Cyan();
+        if this.m_bView == 1 {
+            labelKey = "GR-BountyPaidContracts";
+            value = this.Money(earned);
+            valueColor = this.Gold();
+        }
+        if this.m_bView == 2 {
+            labelKey = "GR-BountyFailedContracts";
+            value = IntToString(failed);
+            valueColor = this.Red();
+        }
+        this.PlaceText(this.m_tree, this.Up(this.T(labelKey)), 34, this.Light(), n"Bold", left, 380.0);
+        let valueText: ref<inkText> = this.PlaceText(this.m_tree, value, 34, valueColor, n"Bold", left + width, 380.0);
+        valueText.SetAnchorPoint(new Vector2(1.0, 0.0));
+        if this.m_bView == 0 {
+            this.PlaceRect(this.m_tree, left, 432.0, width, 10.0, this.Empty(), 1.0);
+            if accepted > 0 {
+                this.PlaceRect(this.m_tree, left, 432.0, width * MinF(1.0, Cast<Float>(accepted) / Cast<Float>(GRBounties.MaxOpen())), 10.0, this.Cyan(), 1.0);
+            }
+        } else {
+            this.PlaceRect(this.m_tree, left, 436.0, width, 2.0, this.Dim(), 1.0);
+        }
+
+        let cols: Int32 = 3;
+        let rows: Int32 = this.m_bView == 0 ? 2 : 3;
+        let cardW: Float = 800.0;
+        let cardH: Float = 320.0;
+        let top: Float = 480.0;
+        if ArraySize(shown) == 0 {
+            let empty: ref<inkText> = this.NewWrappedText(this.T("GR-BountyEmpty-" + IntToString(this.m_bView)), 40, this.Grey(), 2400.0);
+            empty.SetAnchor(inkEAnchor.TopLeft);
+            empty.SetMargin(new inkMargin(left, top + 40.0, 0.0, 0.0));
+            empty.Reparent(this.m_tree);
+        }
+        let limit: Int32 = Min(ArraySize(shown), cols * rows);
+        i = 0;
+        while i < limit {
+            let x: Float = left + Cast<Float>(i % cols) * (cardW + 50.0);
+            let y: Float = top + Cast<Float>(i / cols) * (cardH + 40.0);
+            this.AddBountyCard(shown[i], x, y, cardW, cardH, shown[i].index == this.m_bSel);
+            i += 1;
+        }
+        if ArraySize(shown) > limit {
+            this.PlaceText(this.m_tree, "+" + IntToString(ArraySize(shown) - limit), 40, this.Grey(), n"Medium", left, top + Cast<Float>(rows) * (cardH + 40.0));
+        }
+
+        if this.m_bView == 0 {
+            this.AddBountyClosed(all);
+        }
+        this.FillBountyDetail(selected);
+    }
+
+    private func BountyStatus(c: ref<GRBounty>) -> String {
+        let fixer: String = this.Up(GRBounties.FixerName(c.fixer));
+        if c.state == 1 {
+            return this.Up(this.T("GR-BountyPaid")) + " · " + fixer;
+        }
+        if c.state == 2 {
+            return this.Up(this.T("GR-BountyReason-" + IntToString(c.reason)));
+        }
+        return this.Up(this.DaysLeftText(this.BountyDaysLeft(c))) + " · " + fixer;
+    }
+
+    private func BountyStatusColor(c: ref<GRBounty>) -> HDRColor {
+        if c.state == 1 {
+            return this.Gold();
+        }
+        if c.state == 2 || this.BountyDaysLeft(c) <= 2 {
+            return this.Red();
+        }
+        return this.Grey();
+    }
+
+    private func AddBountyCard(c: ref<GRBounty>, x: Float, y: Float, w: Float, h: Float, selected: Bool) {
+        let entry: ref<GRMenuEntry> = this.BountyEntry(c.nemesisId);
+        let color: HDRColor = this.BountyColor(c);
+        let index: Int32 = ArraySize(this.m_bCards);
+        ArrayPush(this.m_bCards, c.index);
+
+        let card: ref<inkCanvas> = new inkCanvas();
+        card.SetName(StringToName("gr_bcard_" + IntToString(index)));
+        card.SetAnchor(inkEAnchor.TopLeft);
+        card.SetMargin(new inkMargin(x, y, 0.0, 0.0));
+        card.SetSize(new Vector2(w, h));
+        card.SetInteractive(true);
+        card.RegisterToCallback(n"OnRelease", this, n"OnGRBountyCardClick");
+        card.Reparent(this.m_tree);
+
+        let bg: ref<inkImage> = new inkImage();
+        bg.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+        bg.SetTexturePart(n"cell_bg");
+        bg.SetNineSliceScale(true);
+        bg.SetAnchor(inkEAnchor.Fill);
+        bg.SetTintColor(this.Dark());
+        bg.SetOpacity(0.95);
+        bg.Reparent(card);
+
+        let frame: ref<inkImage> = new inkImage();
+        frame.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+        frame.SetTexturePart(n"cell_fg");
+        frame.SetNineSliceScale(true);
+        frame.SetAnchor(inkEAnchor.Fill);
+        frame.Reparent(card);
+        ArrayPush(this.m_bFrames, frame);
+        this.StyleBountyFrame(frame, c, selected);
+
+        let content: ref<inkVerticalPanel> = new inkVerticalPanel();
+        content.SetAnchor(inkEAnchor.Fill);
+        content.SetMargin(new inkMargin(30.0, 18.0, 30.0, 12.0));
+        content.Reparent(card);
+
+        let tags: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        tags.Reparent(content);
+        let rank: ref<inkText> = this.NewText(this.RankName(c.rank), 28, color, n"Bold");
+        rank.SetVAlign(inkEVerticalAlign.Center);
+        rank.SetMargin(new inkMargin(0.0, 0.0, 16.0, 0.0));
+        rank.Reparent(tags);
+        this.NewTag(this.T("GR-MenuKnown"), 22, this.Red()).Reparent(tags);
+        let stateTag: ref<inkCompoundWidget> = this.BountyStateTag(c, 22);
+        if IsDefined(stateTag) {
+            stateTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
+            stateTag.Reparent(tags);
+        }
+        if c.special && GRBounties.IsOpenState(c.state) {
+            let specialTag: ref<inkCompoundWidget> = this.NewTag(this.Up(this.T("GR-BountySpecialTag")), 22, this.Special());
+            specialTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
+            specialTag.Reparent(tags);
+        }
+
+        let name: ref<inkText> = this.NewText(this.BountyName(entry), 48, c.state == 2 ? this.Grey() : color, n"Bold");
+        name.SetMargin(new inkMargin(0.0, 6.0, 0.0, 0.0));
+        name.Reparent(content);
+        if IsDefined(entry) && StrLen(entry.title) > 0 {
+            this.NewText("\"" + entry.title + "\"", 32, this.Light(), n"Regular").Reparent(content);
+        }
+
+        let bar: ref<inkHorizontalPanel> = this.NewRenownBar(IsDefined(entry) ? entry.renown : 0, color, w - 60.0, 8.0, 6.0);
+        bar.SetMargin(new inkMargin(0.0, 12.0, 0.0, 0.0));
+        bar.Reparent(content);
+
+        let row: ref<inkCanvas> = new inkCanvas();
+        row.SetSize(new Vector2(w - 60.0, 52.0));
+        row.SetMargin(new inkMargin(0.0, 12.0, 0.0, 0.0));
+        row.Reparent(content);
+        this.PlaceText(row, this.BountyReward(c), 42, c.state == 2 ? this.Grey() : this.Gold(), n"Bold", 0.0, 0.0);
+        let statusRow: ref<inkCanvas> = new inkCanvas();
+        statusRow.SetSize(new Vector2(w - 60.0, 34.0));
+        statusRow.Reparent(content);
+        let status: ref<inkText> = this.PlaceText(statusRow, this.BountyStatus(c), 26, this.BountyStatusColor(c), n"Bold", w - 60.0, 0.0);
+        status.SetAnchorPoint(new Vector2(1.0, 0.0));
+    }
+
+    private func AddBountyClosed(all: array<ref<GRBounty>>) {
+        let closed: array<ref<GRBounty>>;
+        let k: Int32 = ArraySize(all) - 1;
+        while k >= 0 {
+            if !GRBounties.IsOpenState(all[k].state) {
+                ArrayPush(closed, all[k]);
+            }
+            k -= 1;
+        }
+
+        let block: ref<inkVerticalPanel> = new inkVerticalPanel();
+        block.SetAnchor(inkEAnchor.TopLeft);
+        block.SetMargin(new inkMargin(120.0, 1640.0, 0.0, 0.0));
+        block.Reparent(this.m_tree);
+
+        let header: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        header.Reparent(block);
+        let label: ref<inkText> = this.NewText(this.Up(this.T("GR-BountyClosed")), 34, this.Light(), n"Medium");
+        label.SetVAlign(inkEVerticalAlign.Center);
+        label.Reparent(header);
+        let line: ref<inkRectangle> = this.NewRect(2200.0, 2.0, this.Dim(), 1.0);
+        line.SetVAlign(inkEVerticalAlign.Center);
+        line.SetMargin(new inkMargin(28.0, 0.0, 0.0, 0.0));
+        line.Reparent(header);
+
+        if ArraySize(closed) == 0 {
+            let none: ref<inkText> = this.NewText(this.T("GR-BountyNoClosed"), 34, this.Light(), n"Regular");
+            none.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
+            none.Reparent(block);
+            return;
+        }
+
+        let row: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        row.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
+        row.Reparent(block);
+        let shown: Int32 = Min(ArraySize(closed), 5);
+        let i: Int32 = 0;
+        while i < shown {
+            let c: ref<GRBounty> = closed[i];
+            let entry: ref<GRMenuEntry> = this.BountyEntry(c.nemesisId);
+            let box: ref<inkCanvas> = new inkCanvas();
+            box.SetSize(new Vector2(420.0, 140.0));
+            box.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+            box.Reparent(row);
+            this.AddFill(box, this.Panel(), 0.95);
+            this.AddBorder(box, this.Dim(), 2.0, 1.0);
+
+            let content: ref<inkVerticalPanel> = new inkVerticalPanel();
+            content.SetAnchor(inkEAnchor.Fill);
+            content.SetMargin(new inkMargin(24.0, 12.0, 16.0, 10.0));
+            content.Reparent(box);
+            let name: ref<inkText> = this.NewText(this.BountyName(entry), 36, c.state == 2 ? this.Grey() : this.Light(), n"Bold");
+            name.Reparent(content);
+            this.NewText(this.RankName(c.rank) + " · " + this.Up(this.BountyGang(c, entry)), 24, this.Grey(), n"Bold").Reparent(content);
+            let status: String = c.state == 1 ? this.Up(this.T("GR-BountyPaid")) + " " + this.Money(c.paid) + " · " + GRBounties.FixerName(c.fixer) : this.Up(this.T("GR-BountyFailed")) + " · " + this.T("GR-BountyReason-" + IntToString(c.reason));
+            this.NewText(status, 24, c.state == 1 ? this.Gold() : this.Red(), n"Bold").Reparent(content);
+            i += 1;
+        }
+        if ArraySize(closed) > shown {
+            let more: ref<inkText> = this.NewText("+" + IntToString(ArraySize(closed) - shown), 40, this.Grey(), n"Medium");
+            more.SetVAlign(inkEVerticalAlign.Center);
+            more.Reparent(row);
+        }
+    }
+
+    private func FillBountyDetail(c: ref<GRBounty>) {
+        let header: ref<inkVerticalPanel> = this.m_detailHeader;
+        let panel: ref<inkVerticalPanel> = this.m_detailContent;
+        header.RemoveAllChildren();
+        panel.RemoveAllChildren();
+        if !IsDefined(c) {
+            this.m_detail.SetVisible(false);
+            this.UpdateBountyHint(false);
+            return;
+        }
+        this.m_detail.SetVisible(true);
+        let entry: ref<GRMenuEntry> = this.BountyEntry(c.nemesisId);
+        let width: Float = 888.0;
+        let color: HDRColor = this.BountyColor(c);
+        let fixer: String = GRBounties.FixerName(c.fixer);
+        let name: String = this.BountyName(entry);
+
+        // Same split as FillDetail: contract line, name and title go in the fixed header (above the
+        // divider CreateDetail draws); everything else scrolls inside the RedFalcon scroll area.
+        this.NewText(this.Up(this.T("GR-BountyContract")) + "  |  " + this.Up(fixer + " · " + this.T("GR-BountyDistrict-" + IntToString(c.fixer))), 28, this.Cyan(), n"Bold").Reparent(header);
+        let title: ref<inkText> = this.NewWrappedText(name, 66, c.state == 2 ? this.Grey() : color, width);
+        title.SetFontStyle(n"Bold");
+        title.Reparent(header);
+        if IsDefined(entry) && StrLen(entry.title) > 0 {
+            this.NewText("\"" + entry.title + "\"", 42, this.Light(), n"Regular").Reparent(header);
+        }
+
+        let rankRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        rankRow.Reparent(panel);
+        let rankText: ref<inkText> = this.NewText(this.RankName(c.rank) + "  |  " + this.Up(this.BountyGang(c, entry)), 28, this.Red(), n"Bold");
+        rankText.SetVAlign(inkEVerticalAlign.Center);
+        rankText.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+        rankText.Reparent(rankRow);
+        this.NewTag(this.T("GR-MenuKnown"), 22, this.Red()).Reparent(rankRow);
+        let stateTag: ref<inkCompoundWidget> = this.BountyStateTag(c, 22);
+        if IsDefined(stateTag) {
+            stateTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
+            stateTag.Reparent(rankRow);
+        }
+        if c.special && GRBounties.IsOpenState(c.state) {
+            let specialTag: ref<inkCompoundWidget> = this.NewTag(this.Up(this.T("GR-BountySpecialTag")), 22, this.Special());
+            specialTag.SetMargin(new inkMargin(12.0, 0.0, 0.0, 0.0));
+            specialTag.Reparent(rankRow);
+        }
+
+        let msgRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        msgRow.SetMargin(new inkMargin(0.0, 28.0, 0.0, 0.0));
+        msgRow.Reparent(panel);
+        let msgBar: ref<inkRectangle> = this.NewRect(4.0, 10.0, this.Cyan(), 0.6);
+        msgBar.SetVAlign(inkEVerticalAlign.Fill);
+        msgBar.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+        msgBar.Reparent(msgRow);
+        let msgCol: ref<inkVerticalPanel> = new inkVerticalPanel();
+        msgCol.Reparent(msgRow);
+        this.NewText(this.Up(fixer) + ":", 24, this.Cyan(), n"Bold").Reparent(msgCol);
+        let msgKey: String = "GR-BountyMsg-" + IntToString(c.cond) + "-" + IntToString(Max(1, c.msg));
+        this.NewWrappedText(StrReplaceAll(this.T(msgKey), "{name}", name), 32, this.Light(), width - 30.0).Reparent(msgCol);
+
+        let weak: String = this.BountyWeakList(entry);
+        let bigRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        bigRow.SetMargin(new inkMargin(0.0, 28.0, 0.0, 0.0));
+        bigRow.Reparent(panel);
+        let amount: ref<inkText> = this.NewText(this.Money(c.state == 1 ? c.paid : c.pay), 64, c.state == 2 ? this.Grey() : this.Gold(), n"Bold");
+        amount.SetVAlign(inkEVerticalAlign.Center);
+        amount.SetMargin(new inkMargin(0.0, 0.0, 16.0, 0.0));
+        amount.Reparent(bigRow);
+        let xpText: ref<inkText> = this.NewText("· " + GRBounties.Xp(c.xp, this.T("GR-BountySep")), 44, c.state == 2 ? this.Grey() : this.Cyan(), n"Bold");
+        xpText.SetVAlign(inkEVerticalAlign.Center);
+        xpText.Reparent(bigRow);
+        let note: String = "";
+        let noteColor: HDRColor = this.Grey();
+        if GRBounties.IsOpenState(c.state) && c.bonus > 0 && (StrLen(weak) > 0 || c.bonusUsed) {
+            note = this.Up(StrReplaceAll(this.T("GR-BountyUpTo"), "{pay}", this.Money(c.pay + c.bonus)));
+        }
+        if c.state == 1 {
+            note = this.Up(this.T("GR-BountyPaid"));
+            noteColor = this.Gold();
+        }
+        if c.state == 2 {
+            note = this.Up(this.T("GR-BountyFailed") + ": " + this.T("GR-BountyReason-" + IntToString(c.reason)));
+            noteColor = this.Red();
+        }
+        if StrLen(note) > 0 {
+            let noteText: ref<inkText> = this.NewText(note, 26, noteColor, n"Bold");
+            noteText.SetMargin(new inkMargin(0.0, 4.0, 0.0, 0.0));
+            noteText.Reparent(panel);
+        }
+        if c.state == 3 {
+            this.AddBountyAcceptButton(panel, width);
+        }
+        this.UpdateBountyHint(c.state == 3);
+
+        this.AddSection(panel, this.T("GR-BountyContract"), 28.0);
+        let days: Int32 = Max(1, c.expire - c.offerDay);
+        let cond: String = StrReplaceAll(this.T("GR-BountyCond-" + IntToString(c.cond)), "{name}", name);
+        cond = StrReplaceAll(cond, "{days}", IntToString(days));
+        this.NewWrappedText(cond, 34, this.Light(), width).Reparent(panel);
+        if c.zone > 0 {
+            let zoneText: ref<inkText> = this.NewWrappedText(StrReplaceAll(this.T("GR-BountyZoneHint-" + IntToString(c.zone)), "{name}", name), 30, this.Cyan(), width);
+            zoneText.SetMargin(new inkMargin(0.0, 8.0, 0.0, 0.0));
+            zoneText.Reparent(panel);
+        }
+        if c.special && GRBounties.IsOpenState(c.state) {
+            let specialText: ref<inkText> = this.NewWrappedText(this.T("GR-BountySpecialLine") + (c.bonusUsed ? "  " + this.Up(this.T("GR-BountyBonusDone")) : ""), 30, this.Special(), width);
+            specialText.SetFontStyle(n"Bold");
+            specialText.SetMargin(new inkMargin(0.0, 10.0, 0.0, 0.0));
+            specialText.Reparent(panel);
+        }
+
+        if c.bonus > 0 {
+            let bonusRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+            bonusRow.SetMargin(new inkMargin(0.0, 12.0, 0.0, 0.0));
+            bonusRow.Reparent(panel);
+            let known: Bool = StrLen(weak) > 0 || c.bonusUsed;
+            let bonusLabel: String = StrLen(weak) > 0 ? StrReplaceAll(this.T("GR-BountyBonusWeak"), "{list}", weak) : this.T("GR-BountyBonusHidden");
+            let bonusText: ref<inkText> = this.NewWrappedText(bonusLabel, 32, this.Grey(), 660.0);
+            bonusText.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
+            bonusText.Reparent(bonusRow);
+            let bonusValue: String = known ? "+" + this.Money(c.bonus) : "???";
+            if c.bonusUsed {
+                bonusValue = bonusValue + "  " + this.Up(this.T("GR-BountyBonusDone"));
+            }
+            let bonusAmount: ref<inkText> = this.NewText(bonusValue, 30, c.bonusUsed ? this.Cyan() : (known ? this.Gold() : this.Dim()), n"Bold");
+            bonusAmount.Reparent(bonusRow);
+        }
+
+        if IsDefined(entry) {
+            this.AddSection(panel, this.T("GR-MenuTraits"), 28.0);
+            let traitLines: array<String> = this.TraitLines(entry);
+            for line in traitLines {
+                let parts: array<String> = StrSplit(line, "|");
+                if ArraySize(parts) >= 3 {
+                    let prefix: String = Equals(parts[0], "?") ? "" : parts[0] + "  ";
+                    let trait: ref<inkText> = this.NewWrappedText(prefix + parts[2], 34, this.TraitColor(parts[0]), width);
+                    trait.SetFontStyle(n"Medium");
+                    trait.SetMargin(new inkMargin(0.0, 0.0, 0.0, 6.0));
+                    trait.Reparent(panel);
+                }
+            }
+        }
+
+        let goldRule: ref<inkRectangle> = this.NewRect(width, 2.0, this.Gold(), 0.6);
+        goldRule.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
+        goldRule.Reparent(panel);
+
+        let stats: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        stats.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
+        stats.Reparent(panel);
+        this.AddStatText(stats, IsDefined(entry) ? IntToString(entry.encounters) : "-", this.T("GR-MenuEncounters"), this.Light());
+        this.AddStatText(stats, IsDefined(entry) ? IntToString(entry.escapes) : "-", this.T("GR-MenuEscapes"), this.Light());
+        this.AddStatText(stats, IsDefined(entry) ? IntToString(entry.ambushes) : "-", this.T("GR-MenuAmbushes"), this.Light());
+        if GRBounties.IsOpenState(c.state) {
+            let left: Int32 = this.BountyDaysLeft(c);
+            this.AddStatText(stats, IntToString(left), this.T("GR-BountyDaysLeftStat"), left <= 2 ? this.Red() : this.Light());
+        } else {
+            this.AddStatText(stats, "-", this.T("GR-BountyDaysLeftStat"), this.Light());
+        }
+    }
+
+    private func BountyAcceptedNow() -> Int32 {
+        let count: Int32 = 0;
+        for c in this.m_bContracts {
+            if c.state == 0 {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    private func AddBountyAcceptButton(panel: ref<inkCompoundWidget>, width: Float) {
+        let accepted: Int32 = this.BountyAcceptedNow();
+        let ready: Bool = accepted < GRBounties.MaxOpen();
+        let button: ref<inkCanvas> = new inkCanvas();
+        button.SetName(n"gr_baccept");
+        button.SetSize(new Vector2(width, 96.0));
+        button.SetMargin(new inkMargin(0.0, 20.0, 0.0, 0.0));
+        button.SetInteractive(true);
+        button.RegisterToCallback(n"OnRelease", this, n"OnGRBountyAcceptClick");
+        button.Reparent(panel);
+        this.AddFill(button, this.Dark(), 0.9);
+        let border: ref<GRBorder> = new GRBorder();
+        border.SetAnchor(inkEAnchor.Fill);
+        border.SetThickness(3.0);
+        border.SetTintColor(ready ? this.Cyan() : this.Dim());
+        border.Reparent(button);
+        let title: ref<inkText> = this.PlaceText(button, this.Up(this.T("GR-BountyAccept")), 44, ready ? this.Cyan() : this.Dim(), n"Bold", 32.0, 22.0);
+        title.SetAnchorPoint(new Vector2(0.0, 0.0));
+        if !ready {
+            let full: String = StrReplaceAll(this.T("GR-BountyAcceptFull"), "{n}", IntToString(accepted));
+            full = StrReplaceAll(full, "{max}", IntToString(GRBounties.MaxOpen()));
+            let sub: ref<inkText> = this.PlaceText(button, full, 28, this.Red(), n"Bold", width - 32.0, 32.0);
+            sub.SetAnchorPoint(new Vector2(1.0, 0.0));
+        }
+    }
+
+    private func UpdateBountyHint(show: Bool) {
+        if !IsDefined(this.m_buttonHints) {
+            return;
+        }
+        if show {
+            this.m_buttonHints.AddButtonHint(n"upgrade_perk", this.T("GR-BountyAccept"));
+            this.m_bHint = true;
+            return;
+        }
+        if this.m_bHint {
+            this.m_buttonHints.RemoveButtonHint(n"upgrade_perk");
+            this.m_bHint = false;
+        }
+    }
+
+    private func AcceptSelectedBounty() -> Bool {
+        let c: ref<GRBounty> = this.ContractAt(this.m_bSel);
+        if !IsDefined(c) || c.state != 3 || !IsDefined(this.m_bounties) {
+            return false;
+        }
+        if this.BountyAcceptedNow() >= GRBounties.MaxOpen() {
+            GRLog("Menu: no se puede aceptar #" + IntToString(c.nemesisId) + " (cupo de aceptados lleno)");
+            return false;
+        }
+        let result: String = this.m_bounties.AcceptAt(c.index, c.nemesisId);
+        GRLog("Menu: aceptar contrato -> " + result);
+        this.FillBounty();
+        this.BringToFront();
+        this.PlaySound(n"Button", n"OnPress");
+        return true;
+    }
+
+    protected cb func OnGRBountyAcceptClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") || !this.m_bounty {
+            return false;
+        }
+        return this.AcceptSelectedBounty();
+    }
+
+    private func SetBountyView(view: Int32) {
+        this.m_bView = view;
+        this.m_bFixer = 0;
+        this.m_bSel = -1;
+        this.FillBounty();
+        this.BringToFront();
+        this.PlaySound(n"Button", n"OnPress");
+    }
+
+    private func BountyChangeFixer(delta: Int32) {
+        if ArraySize(this.m_bFixerNames) <= 1 {
+            return;
+        }
+        this.m_bFixer += delta;
+        this.m_bSel = -1;
+        this.FillBounty();
+        this.BringToFront();
+        this.PlaySound(n"Button", n"OnPress");
+    }
+
+    protected cb func OnGRBountyViewClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") || !this.m_bounty {
+            return false;
+        }
+        let target: CName = evt.GetCurrentTarget().GetName();
+        let i: Int32 = 0;
+        while i < 3 {
+            if Equals(target, StringToName("gr_bview_" + IntToString(i))) && i != this.m_bView {
+                this.SetBountyView(i);
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+
+    protected cb func OnGRBountyCardClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") || !this.m_bounty {
+            return false;
+        }
+        let target: CName = evt.GetCurrentTarget().GetName();
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_bCards) {
+            if Equals(target, StringToName("gr_bcard_" + IntToString(i))) {
+                this.m_bSel = this.m_bCards[i];
+                let j: Int32 = 0;
+                while j < ArraySize(this.m_bFrames) && j < ArraySize(this.m_bCards) {
+                    this.StyleBountyFrame(this.m_bFrames[j], this.ContractAt(this.m_bCards[j]), j == i);
+                    j += 1;
+                }
+                this.FillBountyDetail(this.ContractAt(this.m_bSel));
+                this.BringToFront();
+                this.PlaySound(n"Button", n"OnPress");
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+
     protected cb func OnBack(userData: ref<IScriptable>) -> Bool {
         if this.m_fOpen {
             this.CloseFusion();
@@ -3518,6 +4399,30 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             this.m_fallenGrip.SetTintColor(this.Red());
         }
         if evt.IsHandled() || this.m_fOpen {
+            return false;
+        }
+        if this.m_bounty {
+            if evt.IsAction(n"sort_list") {
+                this.SetBountyView((this.m_bView + 1) % 3);
+                evt.Handle();
+                return true;
+            }
+            if evt.IsAction(n"option_switch_prev") {
+                this.BountyChangeFixer(-1);
+                evt.Handle();
+                return true;
+            }
+            if evt.IsAction(n"option_switch_next") {
+                this.BountyChangeFixer(1);
+                evt.Handle();
+                return true;
+            }
+            if evt.IsAction(n"upgrade_perk") {
+                if this.AcceptSelectedBounty() {
+                    evt.Handle();
+                    return true;
+                }
+            }
             return false;
         }
         if evt.IsAction(n"sort_list") {
@@ -3555,6 +4460,13 @@ class GRInsertNemesisMenu extends ScriptableService {
         entry.menuWidget *= r"gangretaliation\\gui\\nemesis.inkwidget";
         entry.name = n"gangretaliation_nemesis_menu";
         ArrayPush(resource.menusEntries, entry);
+        let bounty: inkMenuEntry;
+        bounty.depth = 0u;
+        bounty.spawnMode = inkSpawnMode.SingleAndMultiplayer;
+        bounty.isAffectedByFadeout = true;
+        bounty.menuWidget *= r"gangretaliation\\gui\\nemesis.inkwidget";
+        bounty.name = n"gangretaliation_bounty_menu";
+        ArrayPush(resource.menusEntries, bounty);
     }
 }
 
@@ -3562,7 +4474,68 @@ class GRInsertNemesisMenu extends ScriptableService {
 protected cb func OnInitialize() -> Bool {
     let result: Bool = wrappedMethod();
     this.GRAddNemesisButton();
+    this.GRAddBountyButton();
     return result;
+}
+
+@addMethod(MenuHubLogicController)
+private final func GRAddBountyButton() {
+    let settings: ref<GRSettings> = GRSettings.Get(GetGameInstance());
+    if IsDefined(settings) && !settings.enabled {
+        return;
+    }
+    let container: ref<inkCompoundWidget> = this.GetRootCompoundWidget().GetWidgetByPathName(n"mainMenu/buttonsContainer/panel_journal") as inkCompoundWidget;
+    if !IsDefined(container) {
+        GRLog("Menu: no se encontro la columna JOURNAL del menu principal");
+        return;
+    }
+    let found: Bool = false;
+    let highest: Float = 0.0;
+    let layout: String = "";
+    let count: Int32 = container.GetNumChildren();
+    let i: Int32 = 0;
+    while i < count {
+        let child: wref<inkWidget> = container.GetWidgetByIndex(i);
+        if IsDefined(child) && NotEquals(child.GetName(), n"GangRetaliation_Bounty") {
+            let margin: inkMargin = child.GetMargin();
+            layout += " " + NameToString(child.GetName()) + "=" + FloatToString(margin.top) + (child.IsVisible() ? "" : "(oculto)");
+            if child.IsVisible() && (!found || margin.top < highest) {
+                highest = margin.top;
+                found = true;
+            }
+        }
+        i += 1;
+    }
+    let top: Float = highest - 170.0;
+    let data: ref<GRMenuData> = GRMenuData.Get(GetGameInstance());
+    if !IsDefined(data) || data.ConsumeBountyLayoutLog() {
+        GRLog("Menu: columna JOURNAL (margin.top):" + layout + " -> recompensas en top " + FloatToString(top) + " (arriba de todo)");
+    }
+    let button: ref<inkWidget> = this.SpawnFromLocal(container, n"menu_button");
+    button.SetName(n"GangRetaliation_Bounty");
+    button.SetMargin(new inkMargin(0.0, top, 0.0, 0.0));
+    let controller: ref<MenuItemController> = button.GetController() as MenuItemController;
+    controller.Init(GRBountyMenuItem(GetGameInstance()));
+}
+
+public func GRBountyMenuItem(gi: GameInstance) -> MenuData {
+    let data: MenuData;
+    data.disabled = false;
+    data.fullscreenName = n"gangretaliation_bounty_menu";
+    data.identifier = 63;
+    data.parentIdentifier = 5;
+    data.label = GRSystem.Get(gi).GetText("GR-BountyButton");
+    data.icon = n"ico_data_hub";
+    return data;
+}
+
+@wrapMethod(MenuScenario_HubMenu)
+protected cb func OnOpenMenu(menuName: CName, opt userData: ref<IScriptable>) -> Bool {
+    let data: ref<GRMenuData> = GRMenuData.Get(GetGameInstance());
+    if IsDefined(data) {
+        data.SetBountyMode(Equals(menuName, n"gangretaliation_bounty_menu"));
+    }
+    return wrappedMethod(menuName, userData);
 }
 
 @addMethod(MenuHubLogicController)
