@@ -58,7 +58,14 @@ public class GRPhone extends ScriptableSystem {
         }
         journal.ChangeEntryState(contact, "gameJournalContact", gameJournalEntryState.Active, JournalNotifyOption.DoNotNotify);
         journal.ChangeEntryState(conversation, "gameJournalPhoneConversation", gameJournalEntryState.Active, JournalNotifyOption.DoNotNotify);
-        journal.ChangeEntryState(thread + GRPhone.Pad(next), "gameJournalPhoneMessage", gameJournalEntryState.Active, JournalNotifyOption.Notify);
+        let path: String = thread + GRPhone.Pad(next);
+        // Force a genuine Inactive->Active transition rather than setting Active directly - if the entry's
+        // underlying state already reads Active (e.g. a reused slot, or just not a fresh transition), the
+        // native UI doesn't register it as new and it never shows up as unread in the default Messages
+        // view (only under "All messages"). Confirmed-working pattern, matching Virtual Atelier Delivery's
+        // shipped NotifyAboutLastHistoryItem(), which does the same Inactive-then-Active toggle.
+        journal.ChangeEntryState(path, "gameJournalPhoneMessage", gameJournalEntryState.Inactive, JournalNotifyOption.DoNotNotify);
+        journal.ChangeEntryState(path, "gameJournalPhoneMessage", gameJournalEntryState.Active, JournalNotifyOption.Notify);
         GRLog("SMS al telefono: sms_" + GRPhone.Pad(next) + " (" + from + ")");
         return true;
     }

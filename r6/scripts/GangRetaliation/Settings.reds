@@ -392,6 +392,41 @@ public class GRSettings extends ScriptableSystem {
     @runtimeProperty("ModSettings.description", "GR-SetDebugLogDesc")
     public let debugLog: Bool = false;
 
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatDebug")
+    @runtimeProperty("ModSettings.category.order", "90")
+    @runtimeProperty("ModSettings.displayName", "GR-SetDebugOnScreen")
+    @runtimeProperty("ModSettings.description", "GR-SetDebugOnScreenDesc")
+    public let debugOnScreen: Bool = false;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatDebug")
+    @runtimeProperty("ModSettings.category.order", "90")
+    @runtimeProperty("ModSettings.displayName", "GR-SetDebugOnScreenDetection")
+    @runtimeProperty("ModSettings.description", "GR-SetDebugOnScreenDetectionDesc")
+    public let debugOnScreenDetection: Bool = true;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatDebug")
+    @runtimeProperty("ModSettings.category.order", "90")
+    @runtimeProperty("ModSettings.displayName", "GR-SetDebugOnScreenSpawner")
+    @runtimeProperty("ModSettings.description", "GR-SetDebugOnScreenSpawnerDesc")
+    public let debugOnScreenSpawner: Bool = true;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatDebug")
+    @runtimeProperty("ModSettings.category.order", "90")
+    @runtimeProperty("ModSettings.displayName", "GR-SetDebugOnScreenCampaign")
+    @runtimeProperty("ModSettings.description", "GR-SetDebugOnScreenCampaignDesc")
+    public let debugOnScreenCampaign: Bool = true;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatDebug")
+    @runtimeProperty("ModSettings.category.order", "90")
+    @runtimeProperty("ModSettings.displayName", "GR-SetDebugOnScreenStronghold")
+    @runtimeProperty("ModSettings.description", "GR-SetDebugOnScreenStrongholdDesc")
+    public let debugOnScreenStronghold: Bool = true;
+
     // No plain label/read-only row exists in the Mod Settings framework (checked its
     // source: every ConfigVar type is an interactive Bool/Int/Float/Name/list widget).
     // This field is a no-op by design, purely to show the version at the bottom of the

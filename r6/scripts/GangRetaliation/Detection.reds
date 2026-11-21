@@ -33,6 +33,15 @@ public class GRNemesisEvent {
     public let posY: Float;
     public let posZ: Float;
     public let limbsMissing: Bool;
+    // Only meaningful for origin == "knockedout": true when this candidate is also a GRSpawner own-spawn
+    // (ambush/raid/reinforcement). Own-spawns are independently tracked by GRSpawner.CheckNeutralized(),
+    // which already records this same knockout as a death (kind="knockout") and lets Lua's processDeaths()
+    // announce it ("is dead... for now" / "is dead. For good this time" if beheaded first) with the
+    // canonical return-day logic - so Lua skips the knockout toast whenever this is true, to avoid a
+    // redundant, contradictory second message for the same event. A wild (non-own-spawn) candidate has no
+    // such pipeline watching it, so Lua instead records it immediately but holds the actual announcement
+    // (and keeps it off the roster) for a real-time delay - see deferOrAnnounceKnockout in init.lua.
+    public let ownSpawn: Bool;
 }
 
 public class GRDetection extends ScriptableSystem {
@@ -160,6 +169,17 @@ public class GRDetection extends ScriptableSystem {
         return limbs.fleshDismemberments + limbs.cyberDismemberments > 0u;
     }
 
+    // Relentless Live Dismemberment (the user's dismemberment mod) tracks a downed leg via these two
+    // status effects rather than the native per-component limb count, and has its own grounded/crawl/
+    // seated handling - including its own timeout that eventually force-kills the NPC if left alone.
+    public static func HasDismemberedLeg(npc: ref<ScriptedPuppet>) -> Bool {
+        if !IsDefined(npc) {
+            return false;
+        }
+        return StatusEffectSystem.ObjectHasStatusEffect(npc, t"BaseStatusEffect.DismemberedLegLeft")
+            || StatusEffectSystem.ObjectHasStatusEffect(npc, t"BaseStatusEffect.DismemberedLegRight");
+    }
+
     private func GetHealthPercent(npc: ref<ScriptedPuppet>) -> Float {
         return GameInstance.GetStatPoolsSystem(this.GetGameInstance()).GetStatPoolValue(Cast<StatsObjectID>(npc.GetEntityID()), gamedataStatPoolType.Health, true);
     }
@@ -170,10 +190,7 @@ public class GRDetection extends ScriptableSystem {
     }
 
     private func Debug(msg: String) {
-        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
-        if IsDefined(settings) && settings.debugLog {
-            GRLog(msg);
-        }
+        GRDebugLog(this.GetGameInstance(), msg, "Detection");
     }
 
     private func GetSpawnedNemesisId(id: EntityID) -> Int32 {
@@ -312,6 +329,14 @@ public class GRDetection extends ScriptableSystem {
             }
             return;
         }
+        // A leg-dismembered NPC (Relentless Live Dismemberment's own grounded/crawl/seated state) is
+        // still alive, but forcing them to stand and sprint away interrupts that mod's own handling -
+        // it already has a timeout that resolves them (force-kills them) on its own if left alone, so
+        // leave them to it instead of yanking them into our flee logic.
+        if GRDetection.HasDismemberedLeg(last) {
+            this.Debug("Huida cancelada: sin piernas, se deja en manos del mod de desmembramiento");
+            return;
+        }
         let health: Float = this.GetHealthPercent(last);
         if health > 0.0 && health <= GRIntegrations.GetFleePercent(settings.fleeHealthPercent) {
             this.m_someoneFled = true;
@@ -326,17 +351,36 @@ public class GRDetection extends ScriptableSystem {
     // never count as disarmed even after losing a limb (see RPGManager.DropItemFromSlot's own exclusion
     // list for the same reason, in scriptedPuppet).
     private func HasWeaponEquipped(npc: ref<ScriptedPuppet>) -> Bool {
-        let item: wref<ItemObject> = GameInstance.GetTransactionSystem(this.GetGameInstance()).GetItemInSlot(npc, t"AttachmentSlots.WeaponRight");
+        // Boxer/brawler-type NPCs can carry their weapon (or remaining fist) in either hand, so both
+        // slots need checking - a southpaw missing her right arm would otherwise read as disarmed
+        // while still swinging a weapon equipped in her left hand.
+        return this.HasWeaponInSlot(npc, t"AttachmentSlots.WeaponRight") || this.HasWeaponInSlot(npc, t"AttachmentSlots.WeaponLeft");
+    }
+
+    // "Equipped" here means a real drawn weapon - bare fists (and innate melee cyberware like Mantis
+    // Blades/Strong Arms/Nanowires) also occupy the weapon slot, so brawler-type NPCs would otherwise
+    // never count as disarmed even after losing a limb (see RPGManager.DropItemFromSlot's own exclusion
+    // list for the same reason, in scriptedPuppet).
+    private func HasWeaponInSlot(npc: ref<ScriptedPuppet>, slot: TweakDBID) -> Bool {
+        let item: wref<ItemObject> = GameInstance.GetTransactionSystem(this.GetGameInstance()).GetItemInSlot(npc, slot);
         if !IsDefined(item) {
-            this.Debug("Chequeo de arma: nada en la mano derecha");
+            this.Debug("Chequeo de arma (" + TDBID.ToStringDEBUG(slot) + "): nada en esa mano");
             return false;
         }
         let itemType: gamedataItemType = RPGManager.GetItemType(item.GetItemData().GetID());
         let isFistsLike: Bool = Equals(itemType, gamedataItemType.Wea_Fists) || Equals(itemType, gamedataItemType.Cyb_StrongArms)
             || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires);
-        this.Debug("Chequeo de arma: " + EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType)))
+        this.Debug("Chequeo de arma (" + TDBID.ToStringDEBUG(slot) + "): " + EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType)))
             + (isFistsLike ? " (punos/cyberware, no cuenta como arma)" : " (arma real)"));
         return !isFistsLike;
+    }
+
+    // recordID is an archetype/template path, not a per-NPC identity - two different individuals sharing
+    // the same character base (e.g. two "rare" variants of the same model) print identically and are
+    // impossible to tell apart in the debug log. Tagging with EntityID.ToDebugString gives each a short,
+    // stable per-instance suffix so they read as distinct even when the recordID is the same.
+    private func Tag(id: EntityID, recordID: TweakDBID) -> String {
+        return TDBID.ToStringDEBUG(recordID) + "#" + EntityID.ToDebugString(id);
     }
 
     // With a dismemberment mod installed, a hit can leave an NPC missing a limb; if they're also
@@ -345,15 +389,27 @@ public class GRDetection extends ScriptableSystem {
     private func CheckDisarmedFlee(npc: ref<ScriptedPuppet>) {
         let id: EntityID = npc.GetEntityID();
         if this.HasFled(id) || this.IsRunningAway(id) {
-            this.Debug("Huida por desarme: omitida, ya huyo o esta huyendo (" + TDBID.ToStringDEBUG(npc.GetRecordID()) + ")");
+            this.Debug("Huida por desarme: omitida, ya huyo o esta huyendo (" + this.Tag(id, npc.GetRecordID()) + ")");
             return;
         }
         let health: Float = this.GetHealthPercent(npc);
         let missingLimb: Bool = GRDetection.HasMissingLimb(npc);
         let hasWeapon: Bool = this.HasWeaponEquipped(npc);
-        this.Debug("Huida por desarme: " + TDBID.ToStringDEBUG(npc.GetRecordID()) + " vida=" + FloatToString(health)
+        this.Debug("Huida por desarme: " + this.Tag(id, npc.GetRecordID()) + " vida=" + FloatToString(health)
             + "% miembro perdido=" + (missingLimb ? "si" : "no") + " con arma=" + (hasWeapon ? "si" : "no"));
-        if health <= 0.0 || !missingLimb || hasWeapon {
+        if health <= 0.0 {
+            return;
+        }
+        if !missingLimb || hasWeapon {
+            // Dismemberment is asynchronous - DismembermentComponent.RequestDismemberment() only queues
+            // a DismembermentEvent, processed by the component itself on a later tick, while this check
+            // runs synchronously inside the same hit that caused it. A hit landed the same instant as the
+            // one that severs a limb can easily be checked before the component has registered it, and
+            // since this only runs again on the *next* hit, an NPC who never gets hit again afterward
+            // (confirmed via gamelog trace: two separate NPCs lost a limb on what should have been the
+            // disarming blow, and neither registered it even several seconds later) would otherwise never
+            // get a second chance. Re-check once more shortly after, independent of what this pass saw.
+            GRDetectionCall.SendDelayed(this.GetGameInstance(), GRDetectionCall.RunDisarmedFlee(), id, 0.3);
             return;
         }
         let blocker: String = this.GetFleeBlocker(npc);
@@ -361,22 +417,26 @@ public class GRDetection extends ScriptableSystem {
             this.Debug("Huida por desarme cancelada: " + blocker);
             return;
         }
-        this.Debug("Huida por desarme: disparando huida retrasada (" + TDBID.ToStringDEBUG(npc.GetRecordID()) + ")");
+        this.Debug("Huida por desarme: disparando huida retrasada (" + this.Tag(id, npc.GetRecordID()) + ")");
         GRDetectionCall.SendDelayed(this.GetGameInstance(), GRDetectionCall.RunDisarmedFlee(), id, 0.1);
     }
 
     private func RunDisarmedFlee(id: EntityID) {
+        // Same noise concern as above: now scheduled from every qualifying-or-not hit, so these two
+        // early-outs (npc already dead/invalid, or already fleeing by some other trigger) are also now
+        // common, uninteresting outcomes most of the time - kept silent for the same reason.
         let npc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
         if !IsDefined(npc) || GRDetection.IsNeutralized(npc) || this.GetHealthPercent(npc) <= 0.0 {
-            this.Debug("Huida por desarme (retrasada) cancelada: npc invalido/neutralizado/muerto");
             return;
         }
         if this.HasFled(id) || this.IsRunningAway(id) {
-            this.Debug("Huida por desarme (retrasada) cancelada: ya huyo o esta huyendo");
             return;
         }
         if !GRDetection.HasMissingLimb(npc) || this.HasWeaponEquipped(npc) {
-            this.Debug("Huida por desarme (retrasada) cancelada: ya no cumple miembro perdido/sin arma");
+            // No longer logged: since every hit that doesn't immediately qualify now schedules this same
+            // recheck (see CheckDisarmedFlee's comment above), this branch is the overwhelmingly common,
+            // uninteresting outcome - logging it here would flood the log/on-screen panel on every ordinary
+            // hit instead of just the rare, meaningful cases.
             return;
         }
         let blocker: String = this.GetFleeBlocker(npc);
@@ -384,7 +444,14 @@ public class GRDetection extends ScriptableSystem {
             this.Debug("Huida por desarme (retrasada) cancelada: " + blocker);
             return;
         }
-        this.Debug("Huida por desarme (retrasada): confirmada, huyendo (" + TDBID.ToStringDEBUG(npc.GetRecordID()) + ")");
+        // A missing leg also counts toward HasMissingLimb()'s generic flesh/cyber total, so a
+        // leg-dismembered NPC who's also unarmed would otherwise qualify here too - same reasoning as
+        // CheckLastStanding above, leave them to Relentless Live Dismemberment's own handling instead.
+        if GRDetection.HasDismemberedLeg(npc) {
+            this.Debug("Huida por desarme (retrasada) cancelada: sin piernas, se deja en manos del mod de desmembramiento");
+            return;
+        }
+        this.Debug("Huida por desarme (retrasada): confirmada, huyendo (" + this.Tag(id, npc.GetRecordID()) + ")");
         this.MakeFlee(npc, "desarmado y mutilado");
     }
 
@@ -973,7 +1040,6 @@ public class GRDetection extends ScriptableSystem {
         }
         let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
         let threshold: Float = Cast<Float>(settings.escapeHealthPercent);
-        let debugLog: Bool = IsDefined(settings) && settings.debugLog;
         let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
 
         let i: Int32 = 0;
@@ -990,23 +1056,21 @@ public class GRDetection extends ScriptableSystem {
                 candidate.wasAware = candidate.wasAware || GRDetection.IsAwareOfPlayer(npc, GetPlayer(this.GetGameInstance()));
                 let unconscious: Bool = ScriptedPuppet.IsDefeated(npc) || ScriptedPuppet.IsUnconscious(npc);
 
-                if debugLog {
-                    let msg: String = "Fin de combate: ";
-                    msg += candidate.gang;
-                    msg += " vida ";
-                    msg += FloatToString(candidate.health);
-                    msg += "%";
-                    if candidate.fleeing {
-                        msg += " (huyendo)";
-                    }
-                    if unconscious {
-                        msg += " (inconsciente)";
-                        if !candidate.wasAware {
-                            msg += " (sigiloso, no vio a V)";
-                        }
-                    }
-                    GRLog(msg);
+                let msg: String = "Fin de combate: ";
+                msg += candidate.gang;
+                msg += " vida ";
+                msg += FloatToString(candidate.health);
+                msg += "%";
+                if candidate.fleeing {
+                    msg += " (huyendo)";
                 }
+                if unconscious {
+                    msg += " (inconsciente)";
+                    if !candidate.wasAware {
+                        msg += " (sigiloso, no vio a V)";
+                    }
+                }
+                this.Debug(msg);
 
                 let pacified: Bool = IsDefined(spawner) && spawner.IsLeftover(candidate.entityID) && !candidate.fled;
                 if unconscious {
@@ -1017,7 +1081,7 @@ public class GRDetection extends ScriptableSystem {
                             this.Debug("Derribo: tirada fallida (" + IntToString(settings.knockoutChancePercent) + "%), no se registra: " + candidate.gang);
                         }
                     } else {
-                        if !pacified {
+                        if !pacified && !candidate.wasAware {
                             this.Debug("Derribo sigiloso: no se registra (nunca vio a V, nemesisId=" + IntToString(candidate.nemesisId) + "): " + candidate.gang);
                         }
                     }
@@ -1085,6 +1149,12 @@ public class GRDetection extends ScriptableSystem {
         evt.posY = candidate.position.Y;
         evt.posZ = candidate.position.Z;
         evt.limbsMissing = candidate.limbsMissing;
+        if Equals(origin, "knockedout") {
+            let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
+            if IsDefined(spawner) {
+                evt.ownSpawn = spawner.IsOwnSpawn(candidate.entityID);
+            }
+        }
         ArrayPush(this.m_pending, evt);
         GRLog("Nuevo Nemesis (" + origin + "): " + evt.gang + " " + evt.recordID);
     }

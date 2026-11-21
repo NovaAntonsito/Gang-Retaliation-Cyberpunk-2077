@@ -35,6 +35,11 @@ public class GRSpawner extends ScriptableSystem {
     private let m_deathEntityIDs: array<EntityID>;
     private let m_deathSince: array<Float>;
 
+    // Keeps a Nemesis's scanner name attached to their corpse's EntityID after MarkDead()
+    // zeroes the m_nemesisIDs/m_leftNemesis slot that GetNemesisName() would otherwise read.
+    private let m_deadNameIDs: array<EntityID>;
+    private let m_deadNameValues: array<String>;
+
     private let m_finisherIds: array<Int32>;
 
     private let m_lastHitIds: array<Int32>;
@@ -413,10 +418,46 @@ public class GRSpawner extends ScriptableSystem {
     public func GetNemesisName(id: EntityID) -> String {
         let index: Int32 = this.IndexOf(id);
         if index >= 0 {
-            return this.m_nemesisIDs[index] > 0 ? this.m_speakers[index] : "";
+            if this.m_nemesisIDs[index] > 0 {
+                return this.m_speakers[index];
+            }
+            return this.GetDeadName(id);
         }
         let left: Int32 = this.LeftoverIndex(id);
-        return left >= 0 && this.m_leftNemesis[left] > 0 ? this.m_leftNames[left] : "";
+        if left >= 0 {
+            if this.m_leftNemesis[left] > 0 {
+                return this.m_leftNames[left];
+            }
+            return this.GetDeadName(id);
+        }
+        return this.GetDeadName(id);
+    }
+
+    private func RememberDeadName(id: EntityID, name: String) {
+        if StrLen(name) == 0 {
+            return;
+        }
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_deadNameIDs) {
+            if this.m_deadNameIDs[i] == id {
+                this.m_deadNameValues[i] = name;
+                return;
+            }
+            i += 1;
+        }
+        ArrayPush(this.m_deadNameIDs, id);
+        ArrayPush(this.m_deadNameValues, name);
+    }
+
+    private func GetDeadName(id: EntityID) -> String {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_deadNameIDs) {
+            if this.m_deadNameIDs[i] == id {
+                return this.m_deadNameValues[i];
+            }
+            i += 1;
+        }
+        return "";
     }
 
     private func AddMappin(index: Int32, npc: ref<GameObject>) {
@@ -442,6 +483,7 @@ public class GRSpawner extends ScriptableSystem {
         if index >= 0 {
             this.RemoveMappin(index);
             if this.m_nemesisIDs[index] > 0 {
+                this.RememberDeadName(id, this.m_speakers[index]);
                 this.RecordDeath(this.m_nemesisIDs[index], npc, id);
                 this.m_nemesisIDs[index] = 0;
             }
@@ -449,6 +491,7 @@ public class GRSpawner extends ScriptableSystem {
         }
         let left: Int32 = this.LeftoverIndex(id);
         if left >= 0 && this.m_leftNemesis[left] > 0 {
+            this.RememberDeadName(id, this.m_leftNames[left]);
             this.RecordDeath(this.m_leftNemesis[left], npc, id);
             this.m_leftNemesis[left] = 0;
         }
@@ -1890,6 +1933,8 @@ public class GRSpawner extends ScriptableSystem {
         ArrayClear(this.m_leftSent);
         ArrayClear(this.m_leftUnseen);
         ArrayClear(this.m_leftNames);
+        ArrayClear(this.m_deadNameIDs);
+        ArrayClear(this.m_deadNameValues);
         des.DeleteTagged(n"GangRetaliation");
         this.ResetEncounter();
     }
@@ -2034,6 +2079,10 @@ public class GRSpawner extends ScriptableSystem {
             }
             if remove {
                 if this.m_leftNemesis[i] > 0 {
+                    let settings: ref<GRSettings> = GRSettings.Get(gi);
+                    let limitSeconds: Int32 = IsDefined(settings) ? settings.corpseRemovalSeconds : 30;
+                    GRDebugLog(gi, "Guarida: cadaver de Nemesis #" + IntToString(this.m_leftNemesis[i]) + " eliminado - edad=" + FloatToStringPrec(age, 1)
+                        + "s limite=" + IntToString(limitSeconds) + "s sin ver=" + FloatToStringPrec(this.m_leftUnseen[i], 1) + "s", "Spawner");
                     GRNotifyBossBar(player, null, true);
                     this.TakeLastHit(this.m_leftNemesis[i]);
                 }
