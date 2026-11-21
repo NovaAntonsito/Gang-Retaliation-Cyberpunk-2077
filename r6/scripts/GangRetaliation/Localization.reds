@@ -362,6 +362,10 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-BountyBonusWeak", "Optional: exploit a weakness ({list})");
         this.Text("GR-BountyBonusHidden", "Optional: exploit a hidden weakness");
         this.Text("GR-BountyBonusDone", "Done");
+        this.Text("GR-BountySpecialTag", "Special");
+        this.Text("GR-BountySpecialLine", "SPECIAL: complete every optional objective and Rogue has something for you");
+        this.Text("GR-SilverhandSms", "A replica of Johnny's piece. Had it made years ago... it's yours now. Take care of it, yeah? - Rogue");
+        this.Text("GR-SilverhandMsg", "You received: Malorian Arms 3516 replica");
         this.Text("GR-BountyUnknown", "Unknown target");
         this.Text("GR-BountySep", ",");
         this.Text("GR-BountyOffered", "{fixer} put a price on {name}: {pay} (Bounty Board)");
@@ -884,6 +888,10 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-BountyBonusWeak", "Opcional: aprovecha una debilidad ({list})");
         this.Text("GR-BountyBonusHidden", "Opcional: aprovecha una debilidad oculta");
         this.Text("GR-BountyBonusDone", "Hecho");
+        this.Text("GR-BountySpecialTag", "Especial");
+        this.Text("GR-BountySpecialLine", "ESPECIAL: completa todos los opcionales y Rogue tiene algo para ti");
+        this.Text("GR-SilverhandSms", "Una réplica de la pistola de Johnny. La mandé a hacer hace años... ahora es tuya. Cuídala, ¿sí? - Rogue");
+        this.Text("GR-SilverhandMsg", "Recibiste: réplica de la Malorian Arms 3516");
         this.Text("GR-BountyUnknown", "Objetivo desconocido");
         this.Text("GR-BountySep", ".");
         this.Text("GR-BountyOffered", "{fixer} puso precio a {name}: {pay} (Bounty Board)");

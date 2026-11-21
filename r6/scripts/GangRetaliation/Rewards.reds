@@ -824,6 +824,19 @@ public class GRRewards extends ScriptableSystem {
             GRLog("Recompensas: alijo, no se pudo leer la lista del " + this.StashKindName(kind) + " (GetItemList=false), no se cambia nada");
             return;
         }
+        // Easter egg de Rogue: si la replica esta guardada aca, ya la tiene (no se vuelve a ofrecer).
+        let record: TweakDBID = GRBounties.SilverhandRecord();
+        let scan: Int32 = 0;
+        while scan < ArraySize(items) {
+            let scanned: wref<gameItemData> = items[scan];
+            if IsDefined(scanned) && ItemID.GetTDBID(scanned.GetID()) == record {
+                let bounties: ref<GRBounties> = GRBounties.Get(gi);
+                if IsDefined(bounties) {
+                    bounties.NoteSilverhandSeen(this.StashKindName(kind));
+                }
+            }
+            scan += 1;
+        }
         this.SyncLists();
         let found: Int32 = 0;
         let removed: Int32 = 0;
@@ -1279,6 +1292,7 @@ public class GRBounty {
     public let closeDay: Int32;
     public let xp: Int32;
     public let zone: Int32;
+    public let special: Bool;
 }
 
 public class GRBountyZone {
@@ -1411,7 +1425,12 @@ public class GRBounties extends ScriptableSystem {
     private persistent let m_closeDays: array<Int32>;
     private persistent let m_vDown: array<Int32>;
     private persistent let m_xps: array<Int32>;
+    // Paralelo a m_ids: 1 = contrato ESPECIAL de Rogue (al cobrarlo se entrega la replica). 0 en contratos viejos (backfill en Repair).
+    private persistent let m_specials: array<Int32>;
     private persistent let m_lastDay: Int32;
+    // Easter egg de Rogue: true cuando el arma se entrego o cuando se vio que V ya la tiene (equipada, inventario o alijo). Una vez true no se vuelve a tirar.
+    // Bool persistente: por defecto false, sirve tal cual para partidas viejas (no hace falta backfill en Repair).
+    private persistent let m_silverhandGiven: Bool;
     // Zona de busqueda (paralelos a m_ids). m_zoneSets: 0 sin zona, 1 caza (punto real X/Y/Z + centro CX/CY absoluto),
     // 2 jefe en su guarida (CX/CY = desplazamiento del centro como fraccion del radio, sigue a la guarida).
     private persistent let m_zoneSets: array<Int32>;
@@ -1473,6 +1492,9 @@ public class GRBounties extends ScriptableSystem {
     private let m_pendingXp: array<Int32>;
     private let m_pendingExtra: array<Int32>;
     private let m_notifyAt: Float;
+    // Dev (DevSilverhandOffer): fuerza que la proxima oferta sea de un fixer (se guarda fixer+1, 0 = sin filtro) y que salga ESPECIAL. Nada se guarda.
+    private let m_devFixerP1: Int32;
+    private let m_devSpecial: Bool;
 
     public static func Get(gi: GameInstance) -> ref<GRBounties> {
         return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRBounties") as GRBounties;
@@ -1677,6 +1699,29 @@ public class GRBounties extends ScriptableSystem {
         return 4;
     }
 
+    // Easter egg (tipo 5): una ranura FIJA al final del hilo del contacto de Rogue (FIXER_EGG_SLOT en build_archive.py).
+    // No entra en los bloques de SmsKinds, asi que NextKindSlot no la toca.
+    public static func SmsEggKind() -> Int32 {
+        return 5;
+    }
+
+    public static func SmsEggSlot() -> Int32 {
+        return GRBounties.SmsSlots() + 1;
+    }
+
+    // Easter egg de Rogue: probabilidad (en %) de recibir la Malorian Arms 3516 al cobrar un contrato de Rogue. 0 lo desactiva.
+    public static func SilverhandChancePercent() -> Int32 {
+        return 6;
+    }
+
+    public static func SilverhandFixer() -> Int32 {
+        return 4;
+    }
+
+    public static func SilverhandRecord() -> TweakDBID {
+        return t"Items.Preset_Silverhand_3516";
+    }
+
     public static func SmsThread() -> String {
         return "gr_bounty_board";
     }
@@ -1709,6 +1754,9 @@ public class GRBounties extends ScriptableSystem {
         if kind == 3 {
             return "cobrado";
         }
+        if kind == GRBounties.SmsEggKind() {
+            return "easter egg";
+        }
         return "fallido";
     }
 
@@ -1716,6 +1764,9 @@ public class GRBounties extends ScriptableSystem {
         let sep: String = this.Text("GR-BountySep");
         let name: String = this.NameOf(nemesisId);
         let text: String;
+        if kind == GRBounties.SmsEggKind() {
+            return this.Text("GR-SilverhandSms");
+        }
         if kind == 1 {
             let msgKey: String = "GR-BountyMsg-" + IntToString(extra / 10) + "-" + IntToString(Max(1, extra % 10));
             text = StrReplaceAll(this.Text("GR-BountySmsOffer"), "{msg}", StrReplaceAll(this.Text(msgKey), "{name}", name));
@@ -1752,7 +1803,13 @@ public class GRBounties extends ScriptableSystem {
             GRLog("SMS fixer: falta contacts/" + contactId + "/" + GRBounties.SmsThread() + " en el journal (archive viejo?), solo aviso");
             return false;
         }
-        let slot: Int32 = phone.NextKindSlot(contactId, GRBounties.SmsThread(), Max(1, Min(kind, GRBounties.SmsKinds())), GRBounties.SmsKinds(), GRBounties.SmsSlots());
+        let slot: Int32;
+        if kind == GRBounties.SmsEggKind() {
+            // Easter egg: ranura fija, solo existe en el hilo del contacto de Rogue (si no, devuelve false y sale el aviso).
+            slot = contact == GRBounties.FixerContact(GRBounties.SilverhandFixer()) && phone.HasSlot(contactId, GRBounties.SmsThread(), GRBounties.SmsEggSlot()) ? GRBounties.SmsEggSlot() : 0;
+        } else {
+            slot = phone.NextKindSlot(contactId, GRBounties.SmsThread(), Max(1, Min(kind, GRBounties.SmsKinds())), GRBounties.SmsKinds(), GRBounties.SmsSlots());
+        }
         if slot <= 0 {
             GRLog("SMS fixer: contacts/" + contactId + "/" + GRBounties.SmsThread() + " no tiene ranuras por tipo (archive viejo?), solo aviso");
             return false;
@@ -1874,6 +1931,9 @@ public class GRBounties extends ScriptableSystem {
             }
             GRLog("Bounty: XP agregada a " + IntToString(added) + " contratos de una version anterior");
         }
+        while ArraySize(this.m_specials) < ArraySize(this.m_ids) {
+            ArrayPush(this.m_specials, 0);
+        }
         if ArraySize(this.m_zoneSets) < ArraySize(this.m_ids) || ArraySize(this.m_zoneX) < ArraySize(this.m_ids) || ArraySize(this.m_zoneY) < ArraySize(this.m_ids)
             || ArraySize(this.m_zoneZ) < ArraySize(this.m_ids) || ArraySize(this.m_zoneCX) < ArraySize(this.m_ids) || ArraySize(this.m_zoneCY) < ArraySize(this.m_ids) {
             let zoneAdded: Int32 = ArraySize(this.m_ids) - ArraySize(this.m_zoneSets);
@@ -1916,13 +1976,14 @@ public class GRBounties extends ScriptableSystem {
         n = Min(n, ArraySize(this.m_closeDays));
         n = Min(n, ArraySize(this.m_vDown));
         n = Min(n, ArraySize(this.m_xps));
+        n = Min(n, ArraySize(this.m_specials));
         n = Min(n, ArraySize(this.m_zoneSets));
         n = Min(n, ArraySize(this.m_zoneX));
         n = Min(n, ArraySize(this.m_zoneY));
         n = Min(n, ArraySize(this.m_zoneZ));
         n = Min(n, ArraySize(this.m_zoneCX));
         n = Min(n, ArraySize(this.m_zoneCY));
-        if n == ArraySize(this.m_ids) && n == ArraySize(this.m_vDown) && n == ArraySize(this.m_closeDays) && n == ArraySize(this.m_states) && n == ArraySize(this.m_xps)
+        if n == ArraySize(this.m_ids) && n == ArraySize(this.m_vDown) && n == ArraySize(this.m_closeDays) && n == ArraySize(this.m_states) && n == ArraySize(this.m_xps) && n == ArraySize(this.m_specials)
             && n == ArraySize(this.m_bonusUsed) && n == ArraySize(this.m_fixers) && n == ArraySize(this.m_conds) && n == ArraySize(this.m_pays)
             && n == ArraySize(this.m_expires) && n == ArraySize(this.m_bonuses) && n == ArraySize(this.m_ranks) && n == ArraySize(this.m_gangs)
             && n == ArraySize(this.m_reasons) && n == ArraySize(this.m_paids) && n == ArraySize(this.m_msgs) && n == ArraySize(this.m_offerDays)
@@ -1948,6 +2009,7 @@ public class GRBounties extends ScriptableSystem {
         ArrayResize(this.m_closeDays, n);
         ArrayResize(this.m_vDown, n);
         ArrayResize(this.m_xps, n);
+        ArrayResize(this.m_specials, n);
         ArrayResize(this.m_zoneSets, n);
         ArrayResize(this.m_zoneX, n);
         ArrayResize(this.m_zoneY, n);
@@ -1974,6 +2036,7 @@ public class GRBounties extends ScriptableSystem {
         ArrayErase(this.m_closeDays, i);
         ArrayErase(this.m_vDown, i);
         ArrayErase(this.m_xps, i);
+        ArrayErase(this.m_specials, i);
         ArrayErase(this.m_zoneSets, i);
         ArrayErase(this.m_zoneX, i);
         ArrayErase(this.m_zoneY, i);
@@ -2145,6 +2208,10 @@ public class GRBounties extends ScriptableSystem {
                 this.Daily(today);
             }
         }
+        let spawnerRef: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
+        if IsDefined(spawnerRef) {
+            spawnerRef.DrainBountyDeaths(this);
+        }
         this.RefreshZones();
         this.TickGig();
         this.FlushNotify();
@@ -2200,8 +2267,10 @@ public class GRBounties extends ScriptableSystem {
         let candidates: array<ref<GRMenuEntry>>;
         let weights: array<Int32>;
         let total: Int32 = 0;
+        let strongholdRef: ref<GRStronghold> = GRStronghold.Get(this.GetGameInstance());
         for entry in entries {
-            if !entry.dead && entry.known && entry.id > 0 && entry.rank < 3 && this.OpenIndex(entry.id) < 0 {
+            if !entry.dead && entry.known && entry.id > 0 && entry.rank < 3 && this.OpenIndex(entry.id) < 0 && IsDefined(strongholdRef) && strongholdRef.IsMember(entry.id) && strongholdRef.HasHuntCandidates(entry.gangKey)
+                && (this.m_devFixerP1 == 0 || GRBounties.FixerOfGang(entry.gangKey) == this.m_devFixerP1 - 1) {
                 let weight: Int32 = 1 + Max(0, entry.renown) + 2 * Max(0, entry.escapes) + 4 * Max(0, entry.rank - 1);
                 ArrayPush(candidates, entry);
                 ArrayPush(weights, weight);
@@ -2285,6 +2354,10 @@ public class GRBounties extends ScriptableSystem {
         let xp: Int32 = GRBounties.XpFor(rank, pick.escapes);
 
         this.Repair();
+        let special: Int32 = this.RollSpecial(fixer, pick);
+        if special > 0 && bonus <= 0 {
+            bonus = Max(1, (pay / 8 + 250) / 500) * 500;
+        }
         ArrayPush(this.m_ids, pick.id);
         ArrayPush(this.m_fixers, fixer);
         ArrayPush(this.m_conds, cond);
@@ -2302,6 +2375,7 @@ public class GRBounties extends ScriptableSystem {
         ArrayPush(this.m_closeDays, 0);
         ArrayPush(this.m_vDown, 0);
         ArrayPush(this.m_xps, xp);
+        ArrayPush(this.m_specials, special);
         ArrayPush(this.m_zoneSets, 0);
         ArrayPush(this.m_zoneX, 0.0);
         ArrayPush(this.m_zoneY, 0.0);
@@ -2310,7 +2384,8 @@ public class GRBounties extends ScriptableSystem {
         ArrayPush(this.m_zoneCY, 0.0);
 
         GRLog("Bounty: ofrecido #" + IntToString(pick.id) + " " + GRBounties.FixerName(fixer) + " €$" + IntToString(pay) + " " + IntToString(xp) + " XP cond=" + GRBounties.CondKey(cond)
-            + " vence dia " + IntToString(expire) + (bonus > 0 ? " bono=" + IntToString(bonus) : " sin bono") + " (" + pick.name + ", rango " + IntToString(rank) + ")");
+            + " vence dia " + IntToString(expire) + (bonus > 0 ? " bono=" + IntToString(bonus) : " sin bono") + " (" + pick.name + ", rango " + IntToString(rank) + ")"
+            + (special > 0 ? " ESPECIAL" : ""));
         let text: String = StrReplaceAll(this.Text("GR-BountyOffered"), "{fixer}", GRBounties.FixerName(fixer));
         text = StrReplaceAll(text, "{name}", pick.name);
         text = StrReplaceAll(text, "{pay}", GRBounties.Money(pay, this.Text("GR-BountySep")));
@@ -2344,6 +2419,229 @@ public class GRBounties extends ScriptableSystem {
         let paidText: String = StrReplaceAll(this.Text("GR-BountyPaidMsg"), "{pay}", GRBounties.Money(amount, sep));
         paidText = StrReplaceAll(paidText, "{xp}", GRBounties.Group(xp, sep));
         this.QueueSms(paidText, this.m_fixers[i], 3, this.m_ids[i], amount, xp, 0);
+        if i < ArraySize(this.m_specials) && this.m_specials[i] > 0 {
+            this.PaySpecial(i);
+        }
+    }
+
+    // ---- Easter egg de Rogue (contrato ESPECIAL) ----
+
+    // Donde tiene V la replica: "equipada" (ranuras de la rueda de armas), "en el inventario" (cualquier copia con el mismo TweakDBID, con o sin mejoras) o "" si no la tiene.
+    // Solo lectura. Las armas equipadas tambien estan en el inventario del jugador, pero se mira la rueda aparte para poder decirlo.
+    private func SilverhandOwnedWhere() -> String {
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) {
+            return "";
+        }
+        let record: TweakDBID = GRBounties.SilverhandRecord();
+        let equipment: ref<EquipmentSystemPlayerData> = EquipmentSystem.GetData(player);
+        if IsDefined(equipment) {
+            let slots: Int32 = equipment.GetNumberOfSlots(gamedataEquipmentArea.WeaponWheel, true);
+            let k: Int32 = 0;
+            while k < slots {
+                let equipped: ItemID = equipment.GetItemInEquipSlot(gamedataEquipmentArea.WeaponWheel, k);
+                if ItemID.IsValid(equipped) && ItemID.GetTDBID(equipped) == record {
+                    return "equipada";
+                }
+                k += 1;
+            }
+        }
+        let ts: ref<TransactionSystem> = GameInstance.GetTransactionSystem(gi);
+        let items: array<wref<gameItemData>>;
+        if ts.GetItemList(player, items) {
+            let n: Int32 = ArraySize(items);
+            let j: Int32 = 0;
+            while j < n {
+                let data: wref<gameItemData> = items[j];
+                if IsDefined(data) && ItemID.GetTDBID(data.GetID()) == record {
+                    return "en el inventario";
+                }
+                j += 1;
+            }
+        }
+        return "";
+    }
+
+    // "" = se puede entregar; si no, el motivo. Solo lectura (no toca el flag).
+    private func SilverhandBlocked() -> String {
+        if !IsDefined(GetPlayer(this.GetGameInstance())) {
+            return "sin jugador";
+        }
+        let owned: String = this.SilverhandOwnedWhere();
+        if StrLen(owned) > 0 {
+            return "ya la tiene (" + owned + ")";
+        }
+        if this.m_silverhandGiven {
+            return "ya se entrego (o se vio que la tenia) antes: flag m_silverhandGiven";
+        }
+        return "";
+    }
+
+    // Lo llama el sync del alijo (GRRewards.SyncStash) si la replica esta guardada ahi: desde entonces no se vuelve a ofrecer.
+    public func NoteSilverhandSeen(place: String) {
+        if !this.m_silverhandGiven {
+            this.m_silverhandGiven = true;
+            GRLog("Bounty: easter egg, V ya tiene la replica (" + place + "), no se volvera a ofrecer");
+        }
+    }
+
+    private func HasOpenSpecial() -> Bool {
+        let n: Int32 = Min(ArraySize(this.m_specials), ArraySize(this.m_states));
+        let i: Int32 = 0;
+        while i < n {
+            if this.m_specials[i] > 0 && GRBounties.IsOpenState(this.m_states[i]) {
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+
+    // Tirada al OFRECER un contrato de Rogue: 1 = sale especial. Solo si la chance es > 0, el objetivo tiene una debilidad (si no, el opcional no se puede cumplir),
+    // no hay otro especial abierto y V no tiene la replica ni se dio antes. En dev (m_devSpecial) se saltea la tirada y el requisito de debilidad.
+    private func RollSpecial(fixer: Int32, pick: ref<GRMenuEntry>) -> Int32 {
+        if fixer != GRBounties.SilverhandFixer() {
+            return 0;
+        }
+        if !this.m_devSpecial && (GRBounties.SilverhandChancePercent() <= 0 || !GRBounties.HasWeakness(pick)) {
+            return 0;
+        }
+        if this.HasOpenSpecial() {
+            return 0;
+        }
+        let blocked: String = this.SilverhandBlocked();
+        if StrLen(blocked) > 0 {
+            if this.m_devSpecial {
+                GRLog("Bounty: contrato especial no ofrecido: " + blocked);
+            }
+            return 0;
+        }
+        let roll: Int32 = RandRange(0, 100);
+        let hit: Bool = this.m_devSpecial || roll < GRBounties.SilverhandChancePercent();
+        GRLog("Bounty: tirada de contrato especial de Rogue " + IntToString(roll) + " (< " + IntToString(GRBounties.SilverhandChancePercent()) + (this.m_devSpecial ? ", forzado por dev" : "") + ") -> " + (hit ? "ESPECIAL" : "normal"));
+        return hit ? 1 : 0;
+    }
+
+    // Entrega la replica (todo en el hilo principal). Devuelve "entregada" o el motivo por el que no. Pone el flag solo si de verdad quedo en el inventario.
+    private func GiveSilverhand() -> String {
+        let blocked: String = this.SilverhandBlocked();
+        if StrLen(blocked) > 0 {
+            if StrBeginsWith(blocked, "ya la tiene") {
+                this.NoteSilverhandSeen(StrReplaceAll(StrReplaceAll(blocked, "ya la tiene (", ""), ")", ""));
+            }
+            return blocked;
+        }
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        let ts: ref<TransactionSystem> = GameInstance.GetTransactionSystem(gi);
+        let id: ItemID = ItemID.FromTDBID(GRBounties.SilverhandRecord());
+        let given: Bool = ts.GiveItem(player, id, 1);
+        let there: String = this.SilverhandOwnedWhere();
+        if StrLen(there) == 0 {
+            GRLog("Bounty: easter egg, ERROR: GiveItem=" + (given ? "true" : "false") + " pero la replica no aparece en el inventario, se reintentara en el proximo contrato");
+            return "no se pudo entregar (GiveItem=" + (given ? "true" : "false") + ")";
+        }
+        this.m_silverhandGiven = true;
+        GRLog("Bounty: easter egg, replica entregada (" + there + ")");
+        this.QueueSms(this.Text("GR-SilverhandSms"), GRBounties.SilverhandFixer(), GRBounties.SmsEggKind(), 0, 0, 0, 0);
+        this.Queue(this.Text("GR-SilverhandMsg"));
+        return "entregada";
+    }
+
+    // Al cobrar un contrato especial: la marca se gasta siempre; la replica solo si se cumplieron TODOS los opcionales (hoy el unico es el bono de debilidad).
+    private func PaySpecial(i: Int32) {
+        this.m_specials[i] = 0;
+        let allDone: Bool = this.m_bonuses[i] > 0 && this.m_bonusUsed[i] > 0;
+        if !allDone {
+            GRLog("Bounty: contrato especial #" + IntToString(this.m_ids[i]) + " cobrado sin cumplir los opcionales, sin replica y sin reintento");
+            return;
+        }
+        GRLog("Bounty: contrato especial #" + IntToString(this.m_ids[i]) + " cobrado con todos los opcionales -> " + this.GiveSilverhand());
+    }
+
+    public func DevSilverhand() -> String {
+        this.Repair();
+        let result: String = this.GiveSilverhand();
+        GRLog("Bounty: DevSilverhand -> " + result);
+        return result;
+    }
+
+    public func DevSilverhandReset() -> String {
+        let was: Bool = this.m_silverhandGiven;
+        this.m_silverhandGiven = false;
+        let result: String = "flag m_silverhandGiven bajado (estaba " + (was ? "true" : "false") + "); sigue valiendo 'ya la tiene' si la tiene equipada/en el inventario/alijo";
+        GRLog("Bounty: DevSilverhandReset -> " + result);
+        return result;
+    }
+
+    public func DevSilverhandInfo() -> String {
+        this.Repair();
+        let owned: String = this.SilverhandOwnedWhere();
+        let blocked: String = this.SilverhandBlocked();
+        let result: String = "arma: " + (StrLen(owned) > 0 ? "ya la tiene (" + owned + ")" : "no la tiene") + " | flag m_silverhandGiven=" + (this.m_silverhandGiven ? "true" : "false")
+            + " | chance=" + IntToString(GRBounties.SilverhandChancePercent()) + "% | se puede dar: " + (StrLen(blocked) == 0 ? "si" : "no (" + blocked + ")");
+        let phone: ref<GRPhone> = GRPhone.Get(this.GetGameInstance());
+        if IsDefined(phone) {
+            let ids: array<String> = GRBounties.SmsContacts();
+            let contact: String = ids[GRBounties.FixerContact(GRBounties.SilverhandFixer())];
+            result += " | SMS: contacto " + contact + (phone.IsContactActive(contact) ? " activo" : " NO activo (saldria el aviso en pantalla)")
+                + ", ranura " + IntToString(GRBounties.SmsEggSlot()) + (phone.HasSlot(contact, GRBounties.SmsThread(), GRBounties.SmsEggSlot()) ? " existe" : " NO existe (archive viejo)");
+        }
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_specials) {
+            if this.m_specials[i] > 0 && GRBounties.IsOpenState(this.m_states[i]) {
+                result += " | contrato especial #" + IntToString(this.m_ids[i]) + " (" + this.NameOf(this.m_ids[i]) + ") " + (this.m_states[i] == 0 ? "aceptado" : "oferta")
+                    + ", bono=" + IntToString(this.m_bonuses[i]) + (this.m_bonusUsed[i] > 0 ? " CUMPLIDO" : " sin cumplir");
+            }
+            i += 1;
+        }
+        GRLog("Bounty: DevSilverhandInfo -> " + result);
+        return result;
+    }
+
+    // Ofrece un contrato de Rogue ESPECIAL (sin tirada ni requisito de debilidad), respetando "ya la tiene / ya se dio" y un solo especial abierto.
+    public func DevSilverhandOffer() -> String {
+        this.Repair();
+        let result: String;
+        let blocked: String = this.SilverhandBlocked();
+        if StrLen(blocked) > 0 {
+            result = "no se ofrece: " + blocked;
+        } else if this.HasOpenSpecial() {
+            result = "ya hay un contrato especial abierto";
+        } else if this.OfferedCount() >= GRBounties.MaxOffers() {
+            result = "ofertas pendientes llenas (" + IntToString(this.OfferedCount()) + "/" + IntToString(GRBounties.MaxOffers()) + ")";
+        } else {
+            this.m_devFixerP1 = GRBounties.SilverhandFixer() + 1;
+            this.m_devSpecial = true;
+            result = this.Offer(this.Today());
+            this.m_devFixerP1 = 0;
+            this.m_devSpecial = false;
+            if StrBeginsWith(result, "ofrecido") {
+                result += this.HasOpenSpecial() ? " [ESPECIAL con bono]" : " [sin marca especial]";
+            }
+        }
+        GRLog("Bounty: DevSilverhandOffer -> " + result);
+        return result;
+    }
+
+    // Marca el bono de debilidad como conseguido en el contrato especial abierto (para probar el cobro con replica).
+    public func DevSilverhandBonus() -> String {
+        this.Repair();
+        let result: String = "no hay un contrato especial abierto";
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_specials) {
+            if this.m_specials[i] > 0 && GRBounties.IsOpenState(this.m_states[i]) {
+                if this.m_bonuses[i] <= 0 {
+                    this.m_bonuses[i] = 500;
+                }
+                this.m_bonusUsed[i] = 1;
+                result = "bono cumplido en el contrato especial #" + IntToString(this.m_ids[i]) + " (" + this.NameOf(this.m_ids[i]) + ")";
+            }
+            i += 1;
+        }
+        GRLog("Bounty: DevSilverhandBonus -> " + result);
+        return result;
     }
 
     private func Fail(i: Int32, reason: Int32, today: Int32) {
@@ -2483,6 +2781,14 @@ public class GRBounties extends ScriptableSystem {
         let top: Float = 0.0;
         let useZ: Float = pos.Z;
         let verdict: Int32 = GRSurfaceCheck(gi, pos, top, useZ);
+        // Alcanzabilidad por navmesh desde V (V a <= 200 m): un punto detras de una pared/persiana (interior cerrado) no tiene camino.
+        let reach: Int32 = -1;
+        let pathLen: Float = 0.0;
+        let straight: Float = 0.0;
+        let roof: Bool = verdict == 1 && GRLowRoof(top, pos.Z);
+        if verdict == 1 {
+            reach = GRReachFromPlayer(gi, new Vector4(pos.X, pos.Y, useZ, 1.0), pathLen, straight);
+        }
         let result: String;
         if verdict == 0 {
             result = "Caza #" + IntToString(id) + ": sin datos de suelo en el punto (V a " + IntToString(Cast<Int32>(dist)) + " m), sigue sin validar";
@@ -2500,12 +2806,35 @@ public class GRBounties extends ScriptableSystem {
             } else {
                 result += " | sin otro punto de caza disponible, sin zona (se reintenta)";
             }
+        } else if reach == 2 {
+            let label2: String = IsDefined(stronghold) ? stronghold.CandidateLabel(pos) : "?";
+            result = "Caza #" + IntToString(id) + ": POI " + label2 + " inalcanzable (" + GRReachText(reach, pathLen, straight) + "), descartado";
+            if IsDefined(stronghold) {
+                stronghold.MarkCovered(pos);
+            }
+            this.m_zoneSets[i] = 0;
+            this.SetupZone(i, true);
+            if this.m_zoneSets[i] == 1 {
+                result += " | zona movida a " + FloatToStringPrec(this.m_zoneX[i], 1) + ", " + FloatToStringPrec(this.m_zoneY[i], 1) + ", " + FloatToStringPrec(this.m_zoneZ[i], 1);
+            } else {
+                // Sin otro candidato: SetupZone no toco nada, se conserva la zona y el spawn se reubica dentro del circulo (GRStronghold.BeginHunt).
+                this.m_zoneSets[i] = 1;
+                this.m_zoneZ[i] = useZ;
+                let s3: Int32 = this.SurfFind(id);
+                this.SurfSet(id, true, top, s3 >= 0 ? this.m_surfPoiZ[s3] : pos.Z);
+                result += " | sin otro punto de caza: se conserva la zona y el spawn se reubica en un punto alcanzable del circulo";
+            }
+        } else if reach == 0 && roof {
+            let s4: Int32 = this.SurfFind(id);
+            this.SurfSet(id, false, top, s4 >= 0 ? this.m_surfPoiZ[s4] : pos.Z);
+            result = "Caza #" + IntToString(id) + ": techo bajo (superficie Z=" + FloatToStringPrec(top, 1) + ", POI Z=" + FloatToStringPrec(pos.Z, 1)
+                + ") y sin datos de navmesh para confirmar que es alcanzable, sigue sin validar";
         } else if dist >= 0.0 && dist <= 150.0 {
             this.m_zoneZ[i] = useZ;
             let s: Int32 = this.SurfFind(id);
             this.SurfSet(id, true, top, s >= 0 ? this.m_surfPoiZ[s] : pos.Z);
             result = "Caza #" + IntToString(id) + ": punto validado en superficie (Z=" + FloatToStringPrec(useZ, 1) + ", superficie mas alta " + FloatToStringPrec(top, 1)
-                + ", Z anterior " + FloatToStringPrec(pos.Z, 1) + ")";
+                + ", Z anterior " + FloatToStringPrec(pos.Z, 1) + (reach == 1 ? ", alcanzable: " + GRReachText(reach, pathLen, straight) : "") + ")";
         } else {
             let s2: Int32 = this.SurfFind(id);
             this.SurfSet(id, false, top, s2 >= 0 ? this.m_surfPoiZ[s2] : pos.Z);
@@ -2556,6 +2885,47 @@ public class GRBounties extends ScriptableSystem {
         }
         GRLog("Bounty: DevZoneRevalidate -> " + result);
         return result;
+    }
+
+    // Alcanzabilidad por navmesh del punto de caza del contrato i respecto de V, en texto (para DevZoneInfo / DevZoneReach).
+    private func ReachText(i: Int32) -> String {
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) || i < 0 || i >= ArraySize(this.m_zoneX) || i >= ArraySize(this.m_zoneY) || i >= ArraySize(this.m_zoneZ) {
+            return "alcanzable=sin datos (sin jugador)";
+        }
+        let pathLen: Float = 0.0;
+        let straight: Float = 0.0;
+        let reach: Int32 = GRReachCheck(gi, player.GetWorldPosition(), new Vector4(this.m_zoneX[i], this.m_zoneY[i], this.m_zoneZ[i], 1.0), pathLen, straight);
+        let farNote: String = Vector4.Distance2D(player.GetWorldPosition(), new Vector4(this.m_zoneX[i], this.m_zoneY[i], 0.0, 1.0)) > 200.0 ? " [V a > 200 m: el navmesh puede estar a medio cargar]" : "";
+        return "alcanzable=" + (reach == 1 ? "si" : (reach == 2 ? "no" : "sin datos")) + " (" + GRReachText(reach, pathLen, straight) + ")" + farNote;
+    }
+
+    // Dev: calcula bajo demanda si el punto de caza del primer contrato aceptado con zona de caza es alcanzable desde V por la navmesh.
+    // Por REDnode: api_read GRBounties.Get -> api_call self=<ref> fn=DevZoneReach.
+    public func DevZoneReach() -> String {
+        this.Repair();
+        let result: String = "no hay contratos aceptados con zona de caza";
+        let i: Int32 = 0;
+        let found: Int32 = -1;
+        while i < ArraySize(this.m_ids) && found < 0 {
+            if this.m_states[i] == 0 && this.m_zoneSets[i] == 1 {
+                found = i;
+            }
+            i += 1;
+        }
+        if found >= 0 {
+            result = "Caza #" + IntToString(this.m_ids[found]) + ": " + this.ReachText(found);
+        }
+        GRLog("Bounty: DevZoneReach -> " + result);
+        return result;
+    }
+
+    // Circulo de la zona de caza del contrato aceptado nemesisId (centro y radio). false = sin zona de caza.
+    public func HuntCircle(nemesisId: Int32, out cx: Float, out cy: Float, out radius: Float) -> Bool {
+        let i: Int32 = this.AcceptedIndex(nemesisId);
+        let cz: Float = 0.0;
+        return i >= 0 && this.m_zoneSets[i] == 1 && this.ZoneTarget(i, cx, cy, cz, radius);
     }
 
     private func AcceptedIndex(nemesisId: Int32) -> Int32 {
@@ -3304,6 +3674,7 @@ public class GRBounties extends ScriptableSystem {
                 } else {
                     line += " Z_superficie=sin datos validado=no (pendiente, se revalida a < 200 m o con DevZoneRevalidate)";
                 }
+                line += " " + this.ReachText(this.AcceptedIndex(zone.nemesisId));
             }
             if zone.hasCircle && IsDefined(system) {
                 let mappin: ref<IMappin> = system.GetMappin(zone.circle);
@@ -3720,6 +4091,7 @@ public class GRBounties extends ScriptableSystem {
             c.closeDay = this.m_closeDays[i];
             c.xp = this.m_xps[i];
             c.zone = c.state == 0 ? this.ZoneHint(i) : 0;
+            c.special = this.m_specials[i] > 0;
             ArrayPush(out, c);
             i += 1;
         }
@@ -3800,4 +4172,67 @@ public func GRSurfaceCheck(gi: GameInstance, pos: Vector4, out topZ: Float, out 
         useZ = top;
     }
     return 1;
+}
+
+// Endurecimiento del techo bajo: devuelve true si hay estructura entre 1,5 y 6 m sobre el POI (tinglado o INTERIOR cerrado: no se distinguen por rayos).
+// Un punto asi solo se da por validado si ademas pasa GRReachCheck == 1 (camino corto por navmesh desde V); sin datos de navmesh queda sin validar.
+public func GRLowRoof(topZ: Float, poiZ: Float) -> Bool {
+    return topZ > poiZ + 1.5 && topZ <= poiZ + 6.0;
+}
+
+// Alcanzabilidad por navmesh humano (CalculatePathOnlyHumanNavmesh, la misma API que usa el Spawner). Ambos extremos se ajustan al navmesh.
+// 0 = sin datos (navmesh sin cargar, V o el punto fuera del navmesh: NO decidir nada) | 1 = alcanzable | 2 = inalcanzable (sin camino, camino parcial, o camino enorme).
+// Criterio: el camino llega al punto y mide <= 2,5 x la recta + 15 m (y <= 350 m). pathLen = 0 si no hay camino.
+public func GRReachCheck(gi: GameInstance, from: Vector4, to: Vector4, out pathLen: Float, out straight: Float) -> Int32 {
+    pathLen = 0.0;
+    straight = Vector4.Distance(from, to);
+    let nav: ref<NavigationSystem> = GameInstance.GetNavigationSystem(gi);
+    if !IsDefined(nav) {
+        return 0;
+    }
+    let start: Vector4 = nav.GetNearestNavmeshPointBelowOnlyHumanNavmesh(from + new Vector4(0.0, 0.0, 1.0, 0.0), 2.0, 5);
+    if Vector4.IsZero(start) {
+        return 0;
+    }
+    let goal: Vector4 = nav.GetNearestNavmeshPointBelowOnlyHumanNavmesh(to + new Vector4(0.0, 0.0, 2.0, 0.0), 3.0, 6);
+    if Vector4.IsZero(goal) {
+        return 0;
+    }
+    if Vector4.Distance(start, goal) < 2.0 {
+        pathLen = Vector4.Distance(start, goal);
+        return 1;
+    }
+    let path: ref<NavigationPath> = nav.CalculatePathOnlyHumanNavmesh(start, goal, NavGenAgentSize.Human, 1.0);
+    if !IsDefined(path) || ArraySize(path.path) < 2 {
+        return 2;
+    }
+    let last: Vector4 = path.path[ArraySize(path.path) - 1];
+    pathLen = path.CalculateLength();
+    if Vector4.Distance(last, goal) > 3.0 {
+        // Camino parcial: el navmesh entre V y el punto puede estar a medio cargar si esta lejos; cerca es una pared real.
+        pathLen = 0.0;
+        return straight > 120.0 ? 0 : 2;
+    }
+    if pathLen > straight * 2.5 + 15.0 || pathLen > 350.0 {
+        return 2;
+    }
+    return 1;
+}
+
+public func GRReachText(reach: Int32, pathLen: Float, straight: Float) -> String {
+    if reach == 0 {
+        return "sin datos de navmesh";
+    }
+    return (pathLen > 0.0 ? "camino a " + IntToString(Cast<Int32>(pathLen)) + " m" : "sin camino") + ", recta " + IntToString(Cast<Int32>(straight)) + " m";
+}
+
+// Alcanzabilidad de un punto desde V, solo si V esta a <= 200 m en planta (mas lejos el navmesh puede estar a medio cargar). -1 = no se comprobo (sin jugador o lejos).
+public func GRReachFromPlayer(gi: GameInstance, to: Vector4, out pathLen: Float, out straight: Float) -> Int32 {
+    pathLen = 0.0;
+    straight = 0.0;
+    let player: ref<PlayerPuppet> = GetPlayer(gi);
+    if !IsDefined(player) || Vector4.Distance2D(player.GetWorldPosition(), to) > 200.0 {
+        return -1;
+    }
+    return GRReachCheck(gi, player.GetWorldPosition(), to, pathLen, straight);
 }

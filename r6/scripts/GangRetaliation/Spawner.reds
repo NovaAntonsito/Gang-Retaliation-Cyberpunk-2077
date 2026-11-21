@@ -34,6 +34,10 @@ public class GRSpawner extends ScriptableSystem {
     private let m_deathKinds: array<String>;
     private let m_deathEntityIDs: array<EntityID>;
     private let m_deathSince: array<Float>;
+    private let m_bountyIds: array<Int32>;
+    private let m_bountyKinds: array<String>;
+    private let m_bountyCauses: array<String>;
+    private let m_bountyLairs: array<Bool>;
 
     // Keeps a Nemesis's scanner name attached to their corpse's EntityID after MarkDead()
     // zeroes the m_nemesisIDs/m_leftNemesis slot that GetNemesisName() would otherwise read.
@@ -483,6 +487,7 @@ public class GRSpawner extends ScriptableSystem {
         if index >= 0 {
             this.RemoveMappin(index);
             if this.m_nemesisIDs[index] > 0 {
+                this.RememberDeadName(id, this.m_speakers[index]);
                 this.GiveDownShard(id, this.m_nemesisIDs[index]);
                 this.RecordDeath(this.m_nemesisIDs[index], npc, id);
                 this.m_nemesisIDs[index] = 0;
@@ -491,6 +496,7 @@ public class GRSpawner extends ScriptableSystem {
         }
         let left: Int32 = this.LeftoverIndex(id);
         if left >= 0 && this.m_leftNemesis[left] > 0 {
+            this.RememberDeadName(id, this.m_leftNames[left]);
             this.GiveDownShard(id, this.m_leftNemesis[left]);
             this.RecordDeath(this.m_leftNemesis[left], npc, id);
             this.m_leftNemesis[left] = 0;
@@ -523,6 +529,11 @@ public class GRSpawner extends ScriptableSystem {
         }
         ArrayPush(this.m_deathKinds, kind);
         ArrayPush(this.m_deathCauses, cause);
+        let strongholdRef: ref<GRStronghold> = GRStronghold.Get(this.GetGameInstance());
+        ArrayPush(this.m_bountyIds, nemesisId);
+        ArrayPush(this.m_bountyKinds, kind);
+        ArrayPush(this.m_bountyCauses, cause);
+        ArrayPush(this.m_bountyLairs, IsDefined(strongholdRef) && strongholdRef.SpawnedInLair(nemesisId));
         ArrayRemove(this.m_finisherIds, nemesisId);
         ArrayRemove(this.m_headRemovedIds, id);
         GRLog("Nemesis #" + IntToString(nemesisId) + " muerto (" + kind + ", " + cause + ", decapitado=" + (headRemoved ? "si" : "no") + ")");
@@ -2356,17 +2367,21 @@ public class GRSpawner extends ScriptableSystem {
         ArrayErase(this.m_deathSince, index);
     }
 
-    public func ClearDeaths() {
-        let bounties: ref<GRBounties> = GRBounties.Get(this.GetGameInstance());
-        let stronghold: ref<GRStronghold> = GRStronghold.Get(this.GetGameInstance());
-        if IsDefined(bounties) {
-            let i: Int32 = 0;
-            while i < ArraySize(this.m_deaths) {
-                let inLair: Bool = IsDefined(stronghold) && stronghold.SpawnedInLair(this.m_deaths[i]);
-                bounties.OnDeath(this.m_deaths[i], this.GetDeathKind(i), this.GetDeathCause(i), inLair);
-                i += 1;
-            }
+    public func DrainBountyDeaths(bounties: ref<GRBounties>) {
+        while ArraySize(this.m_bountyIds) > 0 {
+            let id: Int32 = this.m_bountyIds[0];
+            let kind: String = this.m_bountyKinds[0];
+            let cause: String = this.m_bountyCauses[0];
+            let lair: Bool = this.m_bountyLairs[0];
+            ArrayErase(this.m_bountyIds, 0);
+            ArrayErase(this.m_bountyKinds, 0);
+            ArrayErase(this.m_bountyCauses, 0);
+            ArrayErase(this.m_bountyLairs, 0);
+            bounties.OnDeath(id, kind, cause, lair);
         }
+    }
+
+    public func ClearDeaths() {
         ArrayClear(this.m_deaths);
         ArrayClear(this.m_deathKinds);
         ArrayClear(this.m_deathCauses);
