@@ -433,6 +433,13 @@ public class GRHud extends ScriptableSystem {
         while ArraySize(this.m_debugLines) > this.c_debugMaxLines {
             ArrayErase(this.m_debugLines, 0);
         }
+        this.RefreshDebugRows();
+        this.m_debugBox.SetVisible(true);
+    }
+
+    // Shared between PushDebugLine (a new line arrived) and Update (the panel was just turned on and
+    // should show whatever's already in m_debugLines without waiting for a new line).
+    private func RefreshDebugRows() {
         let i: Int32 = 0;
         while i < ArraySize(this.m_debugRows) {
             if i < ArraySize(this.m_debugLines) {
@@ -443,7 +450,6 @@ public class GRHud extends ScriptableSystem {
             }
             i += 1;
         }
-        this.m_debugBox.SetVisible(true);
     }
 
     private func PlaceBox(settings: ref<GRSettings>) {
@@ -561,6 +567,20 @@ public class GRHud extends ScriptableSystem {
         let gi: GameInstance = this.GetGameInstance();
         let settings: ref<GRSettings> = GRSettings.Get(gi);
         let player: ref<PlayerPuppet> = GetPlayer(gi);
+        // PushDebugLine (called from GRDetection.Debug(), gated there on settings.debugOnScreen) is the only
+        // thing that shows/hides the debug panel otherwise, so toggling the setting had no effect until the
+        // next line arrived - turning it off wouldn't hide an already-visible panel, and turning it on
+        // wouldn't show the backlog already sitting in m_debugLines. Handle both here on the existing tick.
+        if IsDefined(settings) && settings.debugOnScreen {
+            if this.EnsureDebugPanel() {
+                this.RefreshDebugRows();
+                this.m_debugBox.SetVisible(true);
+            }
+        } else {
+            if IsDefined(this.m_debugBox) {
+                this.m_debugBox.SetVisible(false);
+            }
+        }
         if !IsDefined(settings) || !IsDefined(player) || !settings.enabled || !settings.threatPanelEnabled || this.IsRadialOpen() {
             if IsDefined(this.m_box) {
                 this.m_box.SetVisible(false);
