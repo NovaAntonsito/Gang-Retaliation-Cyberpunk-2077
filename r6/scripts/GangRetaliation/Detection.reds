@@ -364,8 +364,13 @@ public class GRDetection extends ScriptableSystem {
             return false;
         }
         let itemType: gamedataItemType = RPGManager.GetItemType(item.GetItemData().GetID());
+        // 2026-11-22: a gang NPC self-healing mid-fight briefly equips a stim/injector in this same slot -
+        // Con_Inhaler/Con_Injector (confirmed via the vanilla script dump) aren't weapons either, but
+        // weren't excluded, so a one-armed NPC caught holding one read as "still armed" and never triggered
+        // disarmed-flee, continuing the fight unarmed as if nothing had changed.
         let isFistsLike: Bool = Equals(itemType, gamedataItemType.Wea_Fists) || Equals(itemType, gamedataItemType.Cyb_StrongArms)
-            || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires);
+            || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires)
+            || Equals(itemType, gamedataItemType.Con_Inhaler) || Equals(itemType, gamedataItemType.Con_Injector);
         this.Debug("Chequeo de arma (" + TDBID.ToStringDEBUG(slot) + "): " + EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType)))
             + (isFistsLike ? " (punos/cyberware, no cuenta como arma)" : " (arma real)"));
         return !isFistsLike;
