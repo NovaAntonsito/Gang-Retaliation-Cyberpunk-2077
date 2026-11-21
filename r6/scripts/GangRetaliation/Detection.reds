@@ -741,6 +741,16 @@ public class GRDetection extends ScriptableSystem {
         if IsDefined(puppet) {
             GRMoveTo(puppet, pos, moveMovementType.Walk, 0.5);
         }
+        // 2026-11-22: this used to stop here, leaving the NPC alive forever at the Badlands spot - the
+        // reported bug ("doesn't disappear, comes back knocked out after a save load"). Checked the vanilla
+        // script dump for a safer native despawn call scoped to a non-dynamically-spawned NPC first:
+        // CommunitySystem (the real owner of a wild gang NPC's spawn slot) exposes no per-entity despawn
+        // method to script at all, and the only two that exist anywhere (PreventionSpawnSystem.RequestDespawn,
+        // CompanionSystem.DespawnSubcharacter) are both hard-scoped to NCPD units / unique companions, not
+        // generic gang mooks. No safer alternative exists, so this now does what own-spawn already does
+        // successfully (see GRSpawner.Vanish, same DeleteEntity call) - deferred a few seconds past the pin
+        // so it's not deleted out from under its own still-finishing move command. Not yet confirmed in game.
+        GRDetectionCall.SendDelayed(gi, GRDetectionCall.DespawnVanished(), candidate.entityID, 3.0);
         this.PromoteFled(candidate);
         this.Debug("Escondido desaparece tras perderse de vista 3 s: " + candidate.gang);
         return true;
@@ -922,6 +932,16 @@ public class GRDetection extends ScriptableSystem {
             let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
             if IsDefined(player) {
                 StatusEffectHelper.RemoveStatusEffect(player, GRBlindEffect());
+            }
+            return;
+        }
+        if kind == GRDetectionCall.DespawnVanished() {
+            // Guard against a stale/already-gone id (e.g. the entity unloaded on its own in the meantime)
+            // the same way GRSafeTeleportSpot's own callers already do elsewhere - DeleteEntity on a bad id
+            // is untested territory, so don't hand it one if we can avoid it.
+            if GameInstance.FindEntityByID(this.GetGameInstance(), id) != null {
+                GameInstance.GetDynamicEntitySystem().DeleteEntity(id);
+                this.Debug("Escondido (fuera del mundo) finalmente eliminado");
             }
             return;
         }
@@ -1239,6 +1259,7 @@ public class GRDetectionCall extends DelayCallback {
     public static func NPCDeathByV() -> Int32 { return 7; }
     public static func PlayerTakedownNPC() -> Int32 { return 8; }
     public static func RunDisarmedFlee() -> Int32 { return 9; }
+    public static func DespawnVanished() -> Int32 { return 10; }
 
     public static func Send(gi: GameInstance, kind: Int32, id: EntityID) {
         GRDetectionCall.SendDelayed(gi, kind, id, 0.0);
