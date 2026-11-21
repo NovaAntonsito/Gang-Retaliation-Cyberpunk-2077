@@ -10,8 +10,12 @@ Hierarchy.SOLDIER, Hierarchy.LIEUTENANT, Hierarchy.BOSS = 1, 2, 3
 Hierarchy.cap = { [2] = 2, [3] = 1 }
 Hierarchy.fastRenown = { [2] = 4, [3] = 8 }
 
+-- Excludes a knockout promotion V hasn't been told about yet (pendingReveal - see deferOrAnnounceKnockout,
+-- init.lua) from hierarchy consideration: promoting or naming them before the reveal (e.g. "X rose to
+-- Lieutenant") would spoil a Nemesis the player doesn't know exists. They still count toward the gang's
+-- raw per-gang cap via Store.countAlive, which is separate from this.
 local function alive(n)
-    return n.status ~= "dead"
+    return n.status ~= "dead" and not n.pendingReveal
 end
 
 function Hierarchy.members(campaign, gang, rank)

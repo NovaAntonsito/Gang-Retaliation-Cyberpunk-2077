@@ -20,7 +20,10 @@ Ambush.escapeRestDays = 1
 function Ambush.pick(nemeses, districtGangs, metOnly, today, noBoss)
     local pool, total, resting = {}, 0, {}
     for _, n in ipairs(nemeses) do
-        if n.status ~= "dead" and not n.jailedUntil and n.recordID and n.id and (not metOnly or Ambush.hasMetV(n))
+        -- pendingReveal: a knockout promotion V hasn't been told about yet (see deferOrAnnounceKnockout,
+        -- init.lua) - excluded regardless of metOnly, since hasMetV() would read true immediately off
+        -- encounters=1 even though the player has no idea this Nemesis exists.
+        if n.status ~= "dead" and not n.jailedUntil and not n.pendingReveal and n.recordID and n.id and (not metOnly or Ambush.hasMetV(n))
             and not (noBoss and n.rank == Hierarchy.BOSS) then
             local since = today and n.escapedDay and (today - n.escapedDay)
             if since and since >= 0 and since < Ambush.escapeRestDays then
