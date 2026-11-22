@@ -976,7 +976,7 @@ public class GRSpawner extends ScriptableSystem {
     public func StartAmbush(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String) -> Bool {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
-            GRLog("A pie: no se intenta (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            GRLog("A pie: no se intenta para Nemesis #" + IntToString(nemesisId) + " (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
             return false;
         }
         this.m_raidMode = false;
@@ -991,14 +991,14 @@ public class GRSpawner extends ScriptableSystem {
     public func StartVehicleAmbush(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String, vehicleRecord: String) -> Bool {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
-            GRLog("Vehiculo: no se intenta (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            GRLog("Vehiculo: no se intenta para Nemesis #" + IntToString(nemesisId) + " (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
             return false;
         }
         if this.IsMachineNemesis(nemesisId, recordID, "Vehiculo") {
             return false;
         }
         if !IsDefined(TweakDBInterface.GetVehicleRecord(TDBID.Create(vehicleRecord))) {
-            GRLog("Vehiculo: record inexistente " + vehicleRecord);
+            GRLog("Vehiculo: record inexistente " + vehicleRecord + " para Nemesis #" + IntToString(nemesisId));
             return false;
         }
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
