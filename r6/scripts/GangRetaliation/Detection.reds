@@ -699,8 +699,18 @@ public class GRDetection extends ScriptableSystem {
                     done = true;
                 } else {
                     if candidate.discovered {
-                        this.StopFlee(npc, candidate, "V encontro al escondido");
-                        done = true;
+                        // 2026-11-22: StopFlee() unconditionally turns the NPC hostile again regardless of
+                        // whether they can actually fight - reported in game as a disarmed, limb-missing
+                        // NPC getting spotted while hiding, walking back into combat, and "couldn't do
+                        // anything." If they're still disarmed and missing a limb, let them keep trying to
+                        // hide/flee instead of forcing a pointless re-engagement.
+                        if GRDetection.HasMissingLimb(npc) && !this.HasWeaponEquipped(npc) {
+                            candidate.discovered = false;
+                            this.Debug("Escondido encontrado pero desarmado y mutilado: sigue escondiendose en vez de volver al combate (" + candidate.gang + ")");
+                        } else {
+                            this.StopFlee(npc, candidate, "V encontro al escondido");
+                            done = true;
+                        }
                     } else {
                         if this.WasPromoted(candidate.entityID) && this.DistanceToPlayer(npc) > 100.0 {
                             done = true;
