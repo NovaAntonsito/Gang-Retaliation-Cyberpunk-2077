@@ -253,6 +253,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetCorpseRemoval", "Nemesis corpse removal (seconds)");
         this.Text("GR-SetCorpseRemovalDesc", "How long a dead or unconscious Nemesis body from an ambush/escort sticks around once you're not looking at it, before it's cleared away.");
         this.Text("GR-UiFleeTarget", "Debug: make target flee");
+        this.Text("GR-UiWeaponTarget", "Debug: check target hands");
         this.Text("GR-MsgFled", "%s ran away. They will come back for you.");
         this.Text("GR-MsgFledDismembered", "%s ran away, well, most of them did. Watch your back.");
 
@@ -779,6 +780,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetCorpseRemoval", "Eliminación de cadáveres Némesis (segundos)");
         this.Text("GR-SetCorpseRemovalDesc", "Cuánto tarda en desaparecer el cuerpo muerto o inconsciente de un Némesis de emboscada/escolta una vez que no lo estás mirando.");
         this.Text("GR-UiFleeTarget", "Debug: hacer huir al objetivo");
+        this.Text("GR-UiWeaponTarget", "Debug: revisar las manos del objetivo");
         this.Text("GR-MsgFled", "%s ha huido. Volverá a por ti.");
         this.Text("GR-MsgFledDismembered", "%s huyó, bueno, la mayor parte al menos. Cuídate las espaldas.");
 

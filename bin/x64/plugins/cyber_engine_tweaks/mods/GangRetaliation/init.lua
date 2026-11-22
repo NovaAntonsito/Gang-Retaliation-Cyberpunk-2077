@@ -1196,6 +1196,29 @@ local function onDismemberment(self, bodyPart, woundType, strength, isCritical)
     end
 end
 
+-- 2026-11-22: gamelog.log (CET's own file) only reliably flushes on a clean game exit - a crash (as
+-- happened this same session) loses whatever was still buffered, including the tail of exactly the
+-- debug trail you'd want to diagnose the crash with. This mirrors every PushDebugLine call (the same
+-- text already shown on the on-screen debug panel, GRHud.reds) into its own file instead, flushed after
+-- every line, so it survives a crash - not gated on the Debug Log setting, since it IS that log.
+local debugLogFile = nil
+local function appendDebugLogLine(msg)
+    if not debugLogFile then
+        debugLogFile = io.open("data/debug_onscreen.log", "a")
+    end
+    if debugLogFile then
+        debugLogFile:write(os.date("%Y-%m-%d %H:%M:%S") .. "  " .. tostring(msg) .. "\n")
+        debugLogFile:flush()
+    end
+end
+
+local function onPushDebugLine(self, msg)
+    local ok, err = pcall(appendDebugLogLine, msg)
+    if not ok then
+        print("[GangRetaliation] Error en gancho PushDebugLine: " .. tostring(err))
+    end
+end
+
 registerForEvent("onInit", function()
     math.randomseed(os.time())
     Store.load()
@@ -1207,11 +1230,22 @@ registerForEvent("onInit", function()
         print("[GangRetaliation] No se pudo enganchar DoDismemberment, la deteccion de decapitacion queda inactiva: " .. tostring(errObserve))
     end
 
+    local okObserveDebug, errObserveDebug = pcall(function()
+        Observe("GangRetaliation.GRHud", "PushDebugLine", onPushDebugLine)
+    end)
+    if not okObserveDebug then
+        print("[GangRetaliation] No se pudo enganchar PushDebugLine, el log de depuracion a archivo queda inactivo: " .. tostring(errObserveDebug))
+    end
+
     print("[GangRetaliation] CET cargado")
 end)
 
 registerForEvent("onShutdown", function()
     if Store.dirty then Store.save() end
+    if debugLogFile then
+        debugLogFile:close()
+        debugLogFile = nil
+    end
 end)
 
 GR.prof = { cur = {}, last = {}, window = 0, counts = "", state = "" }
@@ -1688,6 +1722,12 @@ registerForEvent("onDraw", function()
                 local det3 = getDetection()
                 if det3 then
                     GR.lastAction = det3:DebugFleeLookAt() and "Flee OK" or "No valido / not valid"
+                end
+            end
+            if ImGui.Button(text("GR-UiWeaponTarget", "Debug: check target hands")) then
+                local det5 = getDetection()
+                if det5 then
+                    GR.lastAction = det5:DebugWeaponLookAt()
                 end
             end
             local det4 = getDetection()

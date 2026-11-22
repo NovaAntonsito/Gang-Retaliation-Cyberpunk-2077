@@ -364,16 +364,21 @@ public class GRDetection extends ScriptableSystem {
             return false;
         }
         let itemType: gamedataItemType = RPGManager.GetItemType(item.GetItemData().GetID());
-        // 2026-11-22: a gang NPC self-healing mid-fight briefly equips a stim/injector in this same slot -
-        // Con_Inhaler/Con_Injector (confirmed via the vanilla script dump) aren't weapons either, but
-        // weren't excluded, so a one-armed NPC caught holding one read as "still armed" and never triggered
-        // disarmed-flee, continuing the fight unarmed as if nothing had changed.
-        let isFistsLike: Bool = Equals(itemType, gamedataItemType.Wea_Fists) || Equals(itemType, gamedataItemType.Cyb_StrongArms)
-            || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires)
-            || Equals(itemType, gamedataItemType.Con_Inhaler) || Equals(itemType, gamedataItemType.Con_Injector);
+        let isFistsLike: Bool = GRDetection.IsNotARealWeapon(itemType);
         this.Debug("Chequeo de arma (" + TDBID.ToStringDEBUG(slot) + "): " + EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType)))
             + (isFistsLike ? " (punos/cyberware, no cuenta como arma)" : " (arma real)"));
         return !isFistsLike;
+    }
+
+    // "Real weapon" means more than just occupying the weapon slot - bare fists, innate melee cyberware
+    // (Mantis Blades/Strong Arms/Nanowires - see RPGManager.DropItemFromSlot's own exclusion list for the
+    // same reason, in scriptedPuppet), and a self-heal stim/injector (Con_Inhaler/Con_Injector, confirmed
+    // via the vanilla script dump; 2026-11-22: a gang NPC caught mid-heal with one equipped here otherwise
+    // read as "still armed" and never triggered disarmed-flee) all occupy this slot too but aren't weapons.
+    public static func IsNotARealWeapon(itemType: gamedataItemType) -> Bool {
+        return Equals(itemType, gamedataItemType.Wea_Fists) || Equals(itemType, gamedataItemType.Cyb_StrongArms)
+            || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires)
+            || Equals(itemType, gamedataItemType.Con_Inhaler) || Equals(itemType, gamedataItemType.Con_Injector);
     }
 
     // recordID is an archetype/template path, not a per-NPC identity - two different individuals sharing
@@ -1158,6 +1163,28 @@ public class GRDetection extends ScriptableSystem {
         this.AddCombatant(target.GetEntityID());
         this.MakeFleeMode(target, this.m_fleeMode, "debug");
         return true;
+    }
+
+    // Returns a readable summary instead of just logging, so it's visible on the dev overlay
+    // (GR.lastAction) without needing Debug Log/On-Screen Debug enabled first.
+    public func DebugWeaponLookAt() -> String {
+        let target: ref<ScriptedPuppet> = this.GetLookAtNPC();
+        if !IsDefined(target) {
+            return "sin objetivo valido";
+        }
+        return "Der: " + this.DescribeWeaponSlot(target, t"AttachmentSlots.WeaponRight")
+            + " | Izq: " + this.DescribeWeaponSlot(target, t"AttachmentSlots.WeaponLeft")
+            + " | miembro perdido=" + (GRDetection.HasMissingLimb(target) ? "si" : "no");
+    }
+
+    private func DescribeWeaponSlot(npc: ref<ScriptedPuppet>, slot: TweakDBID) -> String {
+        let item: wref<ItemObject> = GameInstance.GetTransactionSystem(this.GetGameInstance()).GetItemInSlot(npc, slot);
+        if !IsDefined(item) {
+            return "vacio";
+        }
+        let itemType: gamedataItemType = RPGManager.GetItemType(item.GetItemData().GetID());
+        let isFistsLike: Bool = GRDetection.IsNotARealWeapon(itemType);
+        return EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType))) + (isFistsLike ? " (no cuenta)" : " (arma real)");
     }
 
     private func PromoteFled(candidate: ref<GRCandidate>) {
