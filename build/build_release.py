@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 MOD = HERE.parent                                   # Working/GangRetaliation
 ROOT = MOD.parent.parent                            # CYBERPUNK MODS
 NAME = "GangRetaliation"
-VERSION = "1.4.10"
+VERSION = "1.5.0"
 ZIP_NAME = f"Gang Retaliation V{VERSION}.zip"
 
 GAME = Path(r"H:\SteamLibrary\steamapps\common\Cyberpunk 2077")

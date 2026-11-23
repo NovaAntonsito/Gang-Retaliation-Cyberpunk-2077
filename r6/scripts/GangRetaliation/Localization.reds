@@ -62,7 +62,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetDebugOnScreenStronghold", "On-screen: Strongholds");
         this.Text("GR-SetDebugOnScreenStrongholdDesc", "Stronghold placement/scanning messages (location picks, moves, revalidation). These always write to gamelog.log regardless of the debug log setting - this only controls whether they also show on screen.");
         this.Text("GR-CatAbout", "About");
-        this.Text("GR-SetVersion", "Gang Retaliation v1.4.10");
+        this.Text("GR-SetVersion", "Gang Retaliation v1.5.0");
         this.Text("GR-SetVersionDesc", "Informational only. Toggling this has no effect.");
         this.Text("GR-CatHud", "HUD");
         this.Text("GR-SetNameplateScale", "Enemy health bar size");
@@ -588,7 +588,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetDebugOnScreenStronghold", "En pantalla: Guaridas");
         this.Text("GR-SetDebugOnScreenStrongholdDesc", "Mensajes de colocacion/escaneo de guaridas (eleccion de ubicacion, mudanzas, revalidacion). Estos siempre se escriben en gamelog.log sin importar el log de depuración - esto solo controla si tambien se muestran en pantalla.");
         this.Text("GR-CatAbout", "Acerca de");
-        this.Text("GR-SetVersion", "Gang Retaliation v1.4.10");
+        this.Text("GR-SetVersion", "Gang Retaliation v1.5.0");
         this.Text("GR-SetVersionDesc", "Solo informativo. Activarlo o desactivarlo no hace nada.");
         this.Text("GR-CatHud", "HUD");
         this.Text("GR-SetNameplateScale", "Tamaño de la barra de vida enemiga");

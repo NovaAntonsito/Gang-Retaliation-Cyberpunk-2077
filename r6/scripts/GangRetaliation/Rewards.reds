@@ -126,6 +126,12 @@ public class GRRewards extends ScriptableSystem {
             ok = false;
         }
 
+        let tierBefore: String = this.DescribeTier(data);
+        if !this.NormalizeTier(data, stats) {
+            ok = false;
+        }
+        GRLog("Recompensas: arma de Jefe #" + IntToString(nemesisId) + " tier ANTES " + tierBefore + " | DESPUES " + this.DescribeTier(data));
+
         let baseName: String = this.BaseDamageName(data, stats);
         let baseValue: Float = this.BaseDamage(data, stats);
         let bonus: Float = baseValue * bonusPct / 100.0;
@@ -156,6 +162,73 @@ public class GRRewards extends ScriptableSystem {
             + " rasgos=\"" + traitsCsv + "\" forzada=" + this.BoolText(force) + " modificadores OK=" + this.BoolText(ok)
             + " | DESPUES " + this.DescribeStats(data, stats));
         return name;
+    }
+
+    // Receta vanilla de armas emblematicas: el tier (Quality*2 + IsItemPlus) pasa a depender de WasItemUpgraded,
+    // que es lo unico que cambia el panel MEJORAS. Idempotente: lee el paso actual, limpia y vuelve a escribir.
+    // El dano elemental es aditivo absoluto y no depende de Quality: no cambia al mejorar.
+    private func NormalizeTier(data: wref<gameItemData>, stats: ref<StatsSystem>) -> Bool {
+        let objID: StatsObjectID = data.GetStatsObjectID();
+        let step: Int32 = Min(10, Max(0, RoundF(data.GetStatValueByType(gamedataStatType.Quality) * 2.0 + data.GetStatValueByType(gamedataStatType.IsItemPlus))));
+        stats.RemoveAllModifiers(objID, gamedataStatType.Quality, true);
+        stats.RemoveAllModifiers(objID, gamedataStatType.RandomCurveInput, true);
+        stats.RemoveAllModifiers(objID, gamedataStatType.IsItemPlus, true);
+        stats.RemoveAllModifiers(objID, gamedataStatType.QualityToMaxQualityRatio, true);
+        stats.RemoveAllModifiers(objID, gamedataStatType.CommonTierFailsafe, true);
+        stats.RemoveAllModifiers(objID, gamedataStatType.WasItemUpgraded, true);
+        let ok: Bool = true;
+        if !stats.AddSavedModifier(objID, RPGManager.CreateStatModifier(gamedataStatType.WasItemUpgraded, gameStatModifierType.Additive, Cast<Float>(step))) {
+            ok = false;
+        }
+        if !stats.AddSavedModifier(objID, RPGManager.CreateStatModifierUsingCurve(gamedataStatType.Quality, gameStatModifierType.Additive,
+            gamedataStatType.WasItemUpgraded, n"quality_curves", n"iconic_upgrades_amount_to_quality")) {
+            ok = false;
+        }
+        if !stats.AddSavedModifier(objID, RPGManager.CreateStatModifierUsingCurve(gamedataStatType.IsItemPlus, gameStatModifierType.Additive,
+            gamedataStatType.WasItemUpgraded, n"quality_curves", n"iconic_upgrades_amount_to_plus")) {
+            ok = false;
+        }
+        return ok;
+    }
+
+    private func DescribeTier(data: wref<gameItemData>) -> String {
+        let q: Float = data.GetStatValueByType(gamedataStatType.Quality);
+        let p: Float = data.GetStatValueByType(gamedataStatType.IsItemPlus);
+        let w: Float = data.GetStatValueByType(gamedataStatType.WasItemUpgraded);
+        let coherent: Bool = RoundF(q * 2.0 + p) == RoundF(w);
+        return "Quality=" + FloatToStringPrec(q, 2) + " IsItemPlus=" + FloatToStringPrec(p, 2) + " WasItemUpgraded=" + FloatToStringPrec(w, 2)
+            + " EffectiveTier=" + FloatToStringPrec(data.GetStatValueByType(gamedataStatType.EffectiveTier), 2)
+            + " Quality*2+Plus==Was:" + this.BoolText(coherent);
+    }
+
+    // Solo pruebas: normaliza el tier de todas las armas de Jefe registradas (idempotente).
+    public func DevNormalizeTiers() -> String {
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) {
+            return "sin jugador";
+        }
+        let ts: ref<TransactionSystem> = GameInstance.GetTransactionSystem(gi);
+        let stats: ref<StatsSystem> = GameInstance.GetStatsSystem(gi);
+        this.SyncLists();
+        let report: String = "";
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_ids) {
+            let id: ItemID = this.m_ids[i];
+            let data: wref<gameItemData> = ts.GetItemData(player, id);
+            if !IsDefined(data) {
+                report += "[" + IntToString(i) + "] sin itemData; ";
+            } else {
+                let before: String = this.DescribeTier(data);
+                let done: Bool = this.NormalizeTier(data, stats);
+                let after: String = this.DescribeTier(data);
+                GRLog("Recompensas: normalizar tier [" + IntToString(i) + "] " + this.DescribeId(id) + " OK=" + this.BoolText(done)
+                    + " ANTES " + before + " | DESPUES " + after);
+                report += "[" + IntToString(i) + "] ANTES " + before + " -> DESPUES " + after + "; ";
+            }
+            i += 1;
+        }
+        return report;
     }
 
     public func Fuse(mainIndex: Int32, copyIndex: Int32, keepElement: Int32) -> Bool {
@@ -1118,6 +1191,10 @@ public class GRRewards extends ScriptableSystem {
             + " " + this.DescribeStat("ElectrocutedApplicationRate", data, stats, gamedataStatType.ElectrocutedApplicationRate)
             + " " + this.DescribeStat("BurningApplicationRate", data, stats, gamedataStatType.BurningApplicationRate)
             + " " + this.DescribeStat("PoisonedApplicationRate", data, stats, gamedataStatType.PoisonedApplicationRate)
+            + " " + this.DescribeStat("Quality", data, stats, gamedataStatType.Quality)
+            + " " + this.DescribeStat("IsItemPlus", data, stats, gamedataStatType.IsItemPlus)
+            + " " + this.DescribeStat("WasItemUpgraded", data, stats, gamedataStatType.WasItemUpgraded)
+            + " " + this.DescribeStat("EffectiveTier", data, stats, gamedataStatType.EffectiveTier)
             + " IsItemIconic=" + this.BoolText(RPGManager.IsItemIconic(data));
     }
 }
@@ -2786,7 +2863,7 @@ public class GRBounties extends ScriptableSystem {
         let pathLen: Float = 0.0;
         let straight: Float = 0.0;
         let roof: Bool = verdict == 1 && GRLowRoof(top, pos.Z);
-        if verdict == 1 {
+        if verdict == 1 && dist >= 0.0 && dist <= 80.0 {
             reach = GRReachFromPlayer(gi, new Vector4(pos.X, pos.Y, useZ, 1.0), pathLen, straight);
         }
         let result: String;
@@ -2808,22 +2885,11 @@ public class GRBounties extends ScriptableSystem {
             }
         } else if reach == 2 {
             let label2: String = IsDefined(stronghold) ? stronghold.CandidateLabel(pos) : "?";
-            result = "Caza #" + IntToString(id) + ": POI " + label2 + " inalcanzable (" + GRReachText(reach, pathLen, straight) + "), descartado";
-            if IsDefined(stronghold) {
-                stronghold.MarkCovered(pos);
-            }
-            this.m_zoneSets[i] = 0;
-            this.SetupZone(i, true);
-            if this.m_zoneSets[i] == 1 {
-                result += " | zona movida a " + FloatToStringPrec(this.m_zoneX[i], 1) + ", " + FloatToStringPrec(this.m_zoneY[i], 1) + ", " + FloatToStringPrec(this.m_zoneZ[i], 1);
-            } else {
-                // Sin otro candidato: SetupZone no toco nada, se conserva la zona y el spawn se reubica dentro del circulo (GRStronghold.BeginHunt).
-                this.m_zoneSets[i] = 1;
-                this.m_zoneZ[i] = useZ;
-                let s3: Int32 = this.SurfFind(id);
-                this.SurfSet(id, true, top, s3 >= 0 ? this.m_surfPoiZ[s3] : pos.Z);
-                result += " | sin otro punto de caza: se conserva la zona y el spawn se reubica en un punto alcanzable del circulo";
-            }
+            result = "Caza #" + IntToString(id) + ": POI " + label2 + " sin camino por navmesh (" + GRReachText(reach, pathLen, straight) + ")";
+            this.m_zoneZ[i] = useZ;
+            let s3: Int32 = this.SurfFind(id);
+            this.SurfSet(id, true, top, s3 >= 0 ? this.m_surfPoiZ[s3] : pos.Z);
+            result += " | se conserva la zona (no se muda por alcance) y GRStronghold.BeginHunt reubica el spawn en un punto alcanzable del circulo";
         } else if reach == 0 && roof {
             let s4: Int32 = this.SurfFind(id);
             this.SurfSet(id, false, top, s4 >= 0 ? this.m_surfPoiZ[s4] : pos.Z);
