@@ -17,6 +17,7 @@ public class GRCandidate {
     public let unseen: Float;
     public let discovered: Bool;
     public let nativeFlee: Bool;
+    public let nativeFleePulse: Float;
     public let limbsMissing: Bool;
     public let wasAware: Bool;
 }
@@ -598,6 +599,7 @@ public class GRDetection extends ScriptableSystem {
             if mode == 7 {
                 let reactions: ref<ReactionManagerComponent> = puppet.GetStimReactionComponent();
                 candidate.nativeFlee = IsDefined(reactions) && reactions.GRForceFlee(player);
+                candidate.nativeFleePulse = 0.0;
                 this.Debug("Huida nativa (modo H): " + (candidate.nativeFlee ? "reaccion Flee pedida" : "sin componente de reacciones, se usa el flash"));
             }
         }
@@ -853,6 +855,27 @@ public class GRDetection extends ScriptableSystem {
                     this.Debug("Huida en curso: " + this.TagCandidate(candidate) + " (spawn propio=" + (ownSpawn ? "si" : "no") + ") visto=" + (sees ? "si" : "no")
                         + " sin ver=" + FloatToString(candidate.unseen) + "s distancia a V=" + FloatToString(distance)
                         + "m recorrido=" + FloatToString(run) + "m transcurrido=" + FloatToString(elapsed) + "s");
+                    // 2026-11-22: the native Flee reaction (mode 7) is a one-shot stim reaction, not a
+                    // standing order - the vanilla behavior tree can run it to completion (e.g. after
+                    // reaching what it considers a safe distance) and just leave the NPC idling in place,
+                    // still Neutral, with nobody left to tell them to keep moving. Re-affirming the same
+                    // reaction every few seconds for as long as this candidate is still tracked as fleeing
+                    // keeps them actually running instead of freezing mid-flee. Applies to every fleeing
+                    // candidate (own-spawn Nemesis or wild gang NPC alike), not just Nemeses.
+                    if candidate.nativeFlee {
+                        candidate.nativeFleePulse += 1.0;
+                        if candidate.nativeFleePulse >= 6.0 {
+                            candidate.nativeFleePulse = 0.0;
+                            let puppet: ref<NPCPuppet> = npc as NPCPuppet;
+                            if IsDefined(puppet) && IsDefined(player) {
+                                let reactions: ref<ReactionManagerComponent> = puppet.GetStimReactionComponent();
+                                if IsDefined(reactions) {
+                                    reactions.GRForceFlee(player);
+                                    this.Debug("Huida nativa: refuerzo periodico para seguir huyendo (" + this.TagCandidate(candidate) + ")");
+                                }
+                            }
+                        }
+                    }
                     if ownSpawn {
                         if (candidate.unseen >= 3.0 && distance > 25.0) || distance > 50.0 {
                             this.PromoteFled(candidate);

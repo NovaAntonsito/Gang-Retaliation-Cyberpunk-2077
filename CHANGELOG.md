@@ -15,6 +15,7 @@
 - Raids near V now only target a gang that actually has a foothold in your current district - a Barghest raid in Dogtown can no longer come after, say, a Maelstrom Nemesis with no presence there.
 - Vehicle ambushes no longer spawn a car somewhere with no real road (a rooftop, for instance) when there's no traffic nearby to anchor the spawn to - falls back to an on-foot ambush instead.
 - Intel Shards picked up off a downed gang member could end up stuck in your inventory instead of vanishing on pickup like they should; a periodic check now clears out any that slip through.
+- A fleeing NPC (Nemesis or not) could finish playing out their initial "run away" reaction and then just stand frozen in place instead of continuing to flee; that reaction now gets periodically refreshed so they keep running until they actually lose you or are caught.
 
 #### Changed
 - Contracts are paid on any takedown by you (knockout or kill). The old "make sure they don't come back" condition is gone. Boss contracts still need the Boss to fall inside their stronghold.
@@ -50,6 +51,7 @@
 - Las redadas cerca de V ahora solo apuntan a una banda que de verdad tiene pie en tu distrito actual - una redada de Barghest en Dogtown ya no puede ir contra, por ejemplo, un Némesis de Maelstrom sin presencia ahí.
 - Las emboscadas en vehículo ya no aparecen en un lugar sin camino real (una azotea, por ejemplo) cuando no hay tráfico cerca para anclar la aparición - en ese caso cae a una emboscada a pie.
 - Los Shards de Intel recogidos de un pandillero caído podían quedar atascados en el inventario en vez de desaparecer al recogerlos como deberían; un chequeo periódico ahora retira los que se cuelan.
+- Un NPC huyendo (Némesis o no) podía terminar su reacción inicial de "huir" y quedarse parado en el lugar en vez de seguir huyendo; esa reacción ahora se refuerza periódicamente para que siga corriendo hasta que de verdad te pierda de vista o lo atrapes.
 
 #### Cambiado
 - Los contratos se cobran con cualquier derribo hecho por ti (noqueo o muerte). Se quitó la condición de "que no vuelva". Los contratos de Jefe siguen exigiendo que el Jefe caiga dentro de su guarida.
