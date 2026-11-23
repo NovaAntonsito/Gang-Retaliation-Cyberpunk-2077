@@ -2101,6 +2101,10 @@ registerForEvent("onDraw", function()
                 local cleared = History.ClearCurrentCampaign()
                 debugLog(cleared and "Historial borrado (boton Clear history log)" or "Clear history log: no hay campana activa, nada que borrar")
             end
+            if ImGui.Button("Reset History Import (clears this campaign's history, re-imports, cannot be undone)") then
+                local migrated = History.ResetImport()
+                debugLog("Reset History Import: historial de la campana borrado, " .. tostring(migrated) .. " evento(s) importado(s) y recargados")
+            end
             if GR.lastAction ~= "" then ImGui.TextDisabled(GR.lastAction) end
         end
     end

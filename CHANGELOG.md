@@ -18,6 +18,7 @@
 - A fleeing NPC (Nemesis or not) could finish playing out their initial "run away" reaction and then just stand frozen in place instead of continuing to flee; that reaction now gets periodically refreshed so they keep running until they actually lose you or are caught.
 
 #### Changed
+- **History migration from the old standalone GangRetaliationHistory mod no longer needs a manual file copy.** If you still have that mod installed (version 1.2.1 or later) alongside this one, its log is pulled in automatically through a direct mod-to-mod call the first time both are loaded together - nothing to copy by hand. A manual `data/legacy_history.log` copy still works as a fallback for anyone on an older standalone-mod version. A new **Reset History Import** button (CET debug window, next to Clear Log) retries the import on demand, for anyone who had trouble the first time.
 - Contracts are paid on any takedown by you (knockout or kill). The old "make sure they don't come back" condition is gone. Boss contracts still need the Boss to fall inside their stronghold.
 
 #### Added
@@ -54,6 +55,7 @@
 - Un NPC huyendo (Némesis o no) podía terminar su reacción inicial de "huir" y quedarse parado en el lugar en vez de seguir huyendo; esa reacción ahora se refuerza periódicamente para que siga corriendo hasta que de verdad te pierda de vista o lo atrapes.
 
 #### Cambiado
+- **La migración del historial del viejo mod independiente GangRetaliationHistory ya no necesita copiar un archivo a mano.** Si todavía tienes ese mod instalado (versión 1.2.1 o más nueva) junto a este, su registro se trae automáticamente mediante una llamada directa entre mods la primera vez que ambos cargan juntos - nada que copiar a mano. Una copia manual de `data/legacy_history.log` sigue funcionando como respaldo para quien esté en una versión más vieja del mod independiente. Un nuevo botón **Reset History Import** (ventana de depuración de CET, junto a Clear Log) reintenta la importación cuando haga falta, para quien haya tenido problemas la primera vez.
 - Los contratos se cobran con cualquier derribo hecho por ti (noqueo o muerte). Se quitó la condición de "que no vuelva". Los contratos de Jefe siguen exigiendo que el Jefe caiga dentro de su guarida.
 
 #### Añadido

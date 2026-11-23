@@ -180,13 +180,36 @@ end
 
 -- ---------------------------------------------------------------- one-time legacy data migration
 -- Confirmed in-game 2026-11-22: CET's Lua sandbox rejects io.open paths that climb out of this mod's own
--- folder via "../" (every other relative path this mod already uses, all inside its own folder, works
--- fine - it's specifically the ".." that's blocked). So the old standalone mod's data/history.log has to
--- be copied INTO this mod's own folder first (as data/legacy_history.log, a plain file-system copy done
--- from outside the game - the sandbox only restricts this mod's own Lua code, not that) - tried first. The
--- "../" paths are kept as a second attempt in case a different CET build/config ever allows it, but are
--- not expected to succeed on this install.
-local OLD_LOG_PATHS = {
+-- folder via "../", and (confirmed 2026-11-23, reading CET's actual source, src/scripting/LuaSandbox.cpp's
+-- GetLuaPath) an absolute path escapes exactly the same way - it isn't a naive ".." substring check, it's a
+-- real root-containment check via std::filesystem::relative, and an absolute path is rejected outright
+-- before that check even runs. There is no `debug` library either (confirmed live: `debug.getinfo` errors
+-- "attempt to index global 'debug' (a nil value)"), so a mod can't even discover its own absolute install
+-- path to try to build one. Every filesystem path out of a mod's own folder is genuinely dead - not a
+-- workaround-able implementation detail, by design.
+--
+-- The real, documented way to reach another mod's data is CET's own `GetMod(name)` - it returns whatever
+-- table that mod's init.lua returned, if anything (see ScriptStore.cpp/GetMod; confirmed via CET source).
+-- So the fix lives on BOTH sides: the next (and likely final) release of the standalone companion mod
+-- exports a tiny `getHistoryLines()` from its own init.lua (reading its own data/history.log, which it's
+-- always been allowed to do - it's inside its own root), and this mod calls `GetMod("GangRetaliationHistory")`
+-- to pull the lines directly, in-memory, no filesystem bridging at all. This only helps a user who has
+-- BOTH mods loaded at the same time with the standalone mod updated to the exporting version - someone who
+-- already removed the old mod, or never updated it past an earlier release, still needs the manual
+-- data/legacy_history.log copy documented in the release notes; that path stays as a fallback below.
+local function tryBridgeImport()
+    local ok, mod = pcall(GetMod, "GangRetaliationHistory")
+    if not ok or type(mod) ~= "table" or type(mod.getHistoryLines) ~= "function" then
+        return nil
+    end
+    local okLines, lines = pcall(mod.getHistoryLines)
+    if not okLines or type(lines) ~= "table" then
+        return nil
+    end
+    return lines
+end
+
+local OLD_LOG_PATHS_FALLBACK = {
     "data/legacy_history.log",
     "../GangRetaliationHistory/data/history.log",
     "../GangRetaliationHistory.disabled/data/history.log",
@@ -308,37 +331,62 @@ local function openFirst(paths)
     return nil, nil
 end
 
+-- Shared by both import sources below: given an iterator of raw old-format lines, parses and replays
+-- each one, returning how many lines migrated and across how many campaigns.
+local function importLines(lineIter)
+    local migrated, campaigns = 0, {}
+    for line in lineIter do
+        local ev = parseOldLine(line)
+        if ev then
+            -- Frozen sentence, no args: stored as the "key" slot with an empty argsStr, same as any
+            -- template with no "%s"/"%d" tokens - Substitute() returns it unchanged (see module
+            -- header). kind is looked up from the REAL old key now, while it's still in scope, and
+            -- persisted explicitly (see formatLine) so it survives every future reload too.
+            local kind = History.KIND[ev.key] or "NEWS"
+            appendLine(ev.campaign, ev.day, kind, ev.sentence, pack(ev.gangs), pack(ev.names), "")
+            migrated = migrated + 1
+            campaigns[ev.campaign] = true
+        end
+    end
+    local campaignCount = 0
+    for _ in pairs(campaigns) do campaignCount = campaignCount + 1 end
+    return migrated, campaignCount
+end
+
 -- Runs once ever: data/.legacy_migrated's mere existence (written at the end of this function regardless
 -- of outcome) is the "already attempted" marker, so a later Clear Log on one campaign's file can never
--- cause the old data to come flooding back in. If the old mod's log can't be found (not installed, already
--- removed, or CET blocked the "../"/same-folder-copy traversal), this is a no-op, same as if there were
--- nothing to migrate - every branch below logs through dlog() so the outcome is visible in
--- data/debug_onscreen.log without needing the CET console.
-local function migrateOldLog()
-    if io.open(MIGRATION_MARKER, "r") then return end
-    local old, foundPath = openFirst(OLD_LOG_PATHS)
-    if not old then
-        dlog("migration: old log not found at any known path - nothing to migrate (or CET blocked the traversal)")
-    else
-        dlog("migration: found old log at \"" .. foundPath .. "\", migrating...")
-        local migrated, campaigns = 0, {}
-        for line in old:lines() do
-            local ev = parseOldLine(line)
-            if ev then
-                -- Frozen sentence, no args: stored as the "key" slot with an empty argsStr, same as any
-                -- template with no "%s"/"%d" tokens - Substitute() returns it unchanged (see module
-                -- header). kind is looked up from the REAL old key now, while it's still in scope, and
-                -- persisted explicitly (see formatLine) so it survives every future reload too.
-                local kind = History.KIND[ev.key] or "NEWS"
-                appendLine(ev.campaign, ev.day, kind, ev.sentence, pack(ev.gangs), pack(ev.names), "")
-                migrated = migrated + 1
-                campaigns[ev.campaign] = true
-            end
-        end
-        old:close()
-        local campaignCount = 0
-        for _ in pairs(campaigns) do campaignCount = campaignCount + 1 end
+-- cause the old data to come flooding back in. Tries the GetMod() bridge first (see tryBridgeImport above -
+-- needs the standalone mod's own next release, still loaded alongside this one); falls back to the
+-- manually-copied data/legacy_history.log, then the "../" paths kept only in case a future CET build ever
+-- allows them. If none of these find anything (old mod not installed/already removed, bridge mod not yet
+-- updated, no manual copy done), this is a no-op, same as if there were nothing to migrate - every branch
+-- below logs through dlog() so the outcome is visible in data/debug_onscreen.log without needing the CET
+-- console.
+-- Does the actual import attempt (bridge first, then file fallbacks) and writes the marker regardless of
+-- outcome. Returns the migrated-event count (0 if nothing was found anywhere) so a caller can report it.
+local function runImport()
+    local migratedTotal = 0
+    local bridged = tryBridgeImport()
+    if bridged then
+        dlog("migration: found old mod via GetMod() bridge, " .. #bridged .. " line(s), migrating...")
+        local i = 0
+        local migrated, campaignCount = importLines(function()
+            i = i + 1
+            return bridged[i]
+        end)
+        migratedTotal = migrated
         dlog("migration: done, " .. migrated .. " legacy events migrated across " .. campaignCount .. " campaign(s)")
+    else
+        local old, foundPath = openFirst(OLD_LOG_PATHS_FALLBACK)
+        if not old then
+            dlog("migration: old log not found via bridge or any known path - nothing to migrate")
+        else
+            dlog("migration: found old log at \"" .. foundPath .. "\", migrating...")
+            local migrated, campaignCount = importLines(old:lines())
+            old:close()
+            migratedTotal = migrated
+            dlog("migration: done, " .. migrated .. " legacy events migrated across " .. campaignCount .. " campaign(s)")
+        end
     end
     pcall(function()
         local marker = io.open(MIGRATION_MARKER, "w")
@@ -347,6 +395,15 @@ local function migrateOldLog()
             marker:close()
         end
     end)
+    return migratedTotal
+end
+
+-- Runs once ever (see runImport's doc above for the marker/fallback details): data/.legacy_migrated's mere
+-- existence is the "already attempted" marker, so a later Clear Log on one campaign's file can never cause
+-- the old data to come flooding back in.
+local function migrateOldLog()
+    if io.open(MIGRATION_MARKER, "r") then return end
+    runImport()
 end
 
 -- Reads this campaign's own file and replays it into GRChronData.
@@ -366,6 +423,30 @@ local function loadFromLog(campaign)
     for _, ev in ipairs(lines) do
         h:Add(ev.day, ev.kind, encodeKeyArgs(ev.key, ev.argsStr), ev.gangs, ev.names)
     end
+end
+
+-- For the CET debug window's "Reset History Import" button - in case the automatic one-time attempt
+-- (e.g. at a bad moment, before the standalone mod's bridge-exporting release was installed, or before this
+-- mod itself had the bridge code) found nothing, or the user wants to retry after fixing their setup.
+-- User's explicit call (2026-11-23): clears the CURRENT campaign's own history first (same scope as
+-- ClearCurrentCampaign - never touches another save's file), re-attempts the import, then reloads the
+-- freshly-imported data straight into GRChronData so the GANGS panel reflects it immediately, no relaunch
+-- needed. Only clears the current campaign, so if the import previously succeeded for a DIFFERENT campaign
+-- too, that other campaign's file is untouched and would get its old-log lines appended a second time if
+-- the import source covers it - acceptable for a "something went wrong, let me retry" recovery action.
+function History.ResetImport()
+    local campaign = state.loadedCampaign
+    if campaign and campaign ~= 0 and campaign ~= -1 then
+        os.remove(logPath(campaign))
+        local h = hist()
+        if h then h:Clear() end
+    end
+    os.remove(MIGRATION_MARKER)
+    local migrated = runImport()
+    if campaign and campaign ~= 0 and campaign ~= -1 then
+        loadFromLog(campaign)
+    end
+    return migrated
 end
 
 -- Call once from init.lua's onInit, passing the two small accessors it already has plus its own
