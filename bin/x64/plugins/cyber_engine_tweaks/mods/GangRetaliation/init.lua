@@ -922,15 +922,17 @@ local function tryRaid(force)
     local districtGangs = (warSys and War.districtGangs(campaign, warSys:GetCurrentDistrict()))
         or Ambush.parseGangs(spawner:GetDistrictGangs())
     local raidForce = spawner:GetRaidForce()
-    local pool = campaign.nemeses
-    if raidForce == "Barghest" then
-        pool, districtGangs = {}, {}
-        for _, c in ipairs(campaign.nemeses) do
-            if c.gang ~= "Barghest" then table.insert(pool, c) end
+    -- A raid means NCPD/Barghest hitting a hideout, so the target's gang must actually have a
+    -- foothold in the district the player is standing in right now (districtGangs above) - Barghest
+    -- additionally never raids its own hideouts.
+    local pool = {}
+    for _, c in ipairs(campaign.nemeses) do
+        if districtGangs[c.gang] and c.gang ~= raidForce then
+            table.insert(pool, c)
         end
     end
     local n = Ambush.pick(pool, districtGangs, false)
-    if not n then return raidForce == "Barghest" and "no outsider Nemesis for a Barghest raid" or "no living Nemesis" end
+    if not n then return string.format("no %s Nemesis with a foothold here", raidForce) end
 
     pushTraits(n)
     if not spawner:StartRaid(n.id, n.recordID, n.appearance or "", Ambush.escorts(n, settings.ambushMaxEscorts), fullName(n), Ambush.police(n)) then
