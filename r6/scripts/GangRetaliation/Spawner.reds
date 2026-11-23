@@ -976,7 +976,7 @@ public class GRSpawner extends ScriptableSystem {
     public func StartAmbush(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String) -> Bool {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
-            GRLog("A pie: no se intenta (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            GRLog("A pie: no se intenta para Nemesis #" + IntToString(nemesisId) + " (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
             return false;
         }
         this.m_raidMode = false;
@@ -991,14 +991,14 @@ public class GRSpawner extends ScriptableSystem {
     public func StartVehicleAmbush(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String, vehicleRecord: String) -> Bool {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
-            GRLog("Vehiculo: no se intenta (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            GRLog("Vehiculo: no se intenta para Nemesis #" + IntToString(nemesisId) + " (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
             return false;
         }
         if this.IsMachineNemesis(nemesisId, recordID, "Vehiculo") {
             return false;
         }
         if !IsDefined(TweakDBInterface.GetVehicleRecord(TDBID.Create(vehicleRecord))) {
-            GRLog("Vehiculo: record inexistente " + vehicleRecord);
+            GRLog("Vehiculo: record inexistente " + vehicleRecord + " para Nemesis #" + IntToString(nemesisId));
             return false;
         }
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
@@ -1007,17 +1007,13 @@ public class GRSpawner extends ScriptableSystem {
         if this.FindTrafficSpot(player, pos, orientation) {
             GRLog("Vehiculo: junto a un auto del trafico a " + FloatToString(Vector4.Distance(pos, player.GetWorldPosition())) + " m");
         } else {
-            GRLog("Vehiculo: sin auto del trafico util (cargados=" + IntToString(this.m_trafficFails[0])
+            // No real road nearby to piggyback on - FindSpot's fallback has no notion of "road" at all
+            // (just reachable/open-sky/clear), which is how a vehicle ambush once spawned atop a building.
+            // Bail out instead so launchAmbush's own on-foot fallback (init.lua) takes over.
+            GRLog("Vehiculo: sin auto del trafico util, no se genera (cargados=" + IntToString(this.m_trafficFails[0])
                 + ", fuera de rango=" + IntToString(this.m_trafficFails[1]) + ", sin camino=" + IntToString(this.m_trafficFails[2])
                 + ", sin hueco=" + IntToString(this.m_trafficFails[3]) + ", a la vista=" + IntToString(this.m_trafficFails[4]) + ")");
-            pos = this.FindSpot(player, RandRangeF(165.0, 195.0), 70.0, 120.0, 0.45, true);
-            if !this.m_spotFound {
-                GRLog("Vehiculo: sin sitio alrededor de V (descartes: no alcanzable=" + IntToString(this.m_spotFails[0])
-                    + ", bajo techo=" + IntToString(this.m_spotFails[1]) + ", ocupado=" + IntToString(this.m_spotFails[2])
-                    + ", a la vista=" + IntToString(this.m_spotFails[3]) + ")");
-                return false;
-            }
-            orientation = this.GetFacingPlayer(player, pos);
+            return false;
         }
         let des: ref<DynamicEntitySystem> = GameInstance.GetDynamicEntitySystem();
         let spec: ref<DynamicEntitySpec> = new DynamicEntitySpec();

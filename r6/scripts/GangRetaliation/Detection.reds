@@ -17,6 +17,7 @@ public class GRCandidate {
     public let unseen: Float;
     public let discovered: Bool;
     public let nativeFlee: Bool;
+    public let nativeFleePulse: Float;
     public let limbsMissing: Bool;
     public let wasAware: Bool;
 }
@@ -364,11 +365,21 @@ public class GRDetection extends ScriptableSystem {
             return false;
         }
         let itemType: gamedataItemType = RPGManager.GetItemType(item.GetItemData().GetID());
-        let isFistsLike: Bool = Equals(itemType, gamedataItemType.Wea_Fists) || Equals(itemType, gamedataItemType.Cyb_StrongArms)
-            || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires);
+        let isFistsLike: Bool = GRDetection.IsNotARealWeapon(itemType);
         this.Debug("Chequeo de arma (" + TDBID.ToStringDEBUG(slot) + "): " + EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType)))
             + (isFistsLike ? " (punos/cyberware, no cuenta como arma)" : " (arma real)"));
         return !isFistsLike;
+    }
+
+    // "Real weapon" means more than just occupying the weapon slot - bare fists, innate melee cyberware
+    // (Mantis Blades/Strong Arms/Nanowires - see RPGManager.DropItemFromSlot's own exclusion list for the
+    // same reason, in scriptedPuppet), and a self-heal stim/injector (Con_Inhaler/Con_Injector, confirmed
+    // via the vanilla script dump; 2026-11-22: a gang NPC caught mid-heal with one equipped here otherwise
+    // read as "still armed" and never triggered disarmed-flee) all occupy this slot too but aren't weapons.
+    public static func IsNotARealWeapon(itemType: gamedataItemType) -> Bool {
+        return Equals(itemType, gamedataItemType.Wea_Fists) || Equals(itemType, gamedataItemType.Cyb_StrongArms)
+            || Equals(itemType, gamedataItemType.Cyb_MantisBlades) || Equals(itemType, gamedataItemType.Cyb_NanoWires)
+            || Equals(itemType, gamedataItemType.Con_Inhaler) || Equals(itemType, gamedataItemType.Con_Injector);
     }
 
     // recordID is an archetype/template path, not a per-NPC identity - two different individuals sharing
@@ -377,6 +388,16 @@ public class GRDetection extends ScriptableSystem {
     // stable per-instance suffix so they read as distinct even when the recordID is the same.
     private func Tag(id: EntityID, recordID: TweakDBID) -> String {
         return TDBID.ToStringDEBUG(recordID) + "#" + EntityID.ToDebugString(id);
+    }
+
+    // 2026-11-22: most of the hiding/fleeing log lines below only ever printed candidate.gang (e.g.
+    // "Animals") - fine for one NPC at a time, but indistinguishable when several members of the same
+    // gang are mid-fight at once (confirmed ambiguous in a real log: 5 identical "Fin de combate: Animals
+    // ..." lines in the same second, impossible to tell apart as one NPC or five). Use this wherever a
+    // log line identifies a candidate, so every line carries the same per-instance tag CheckDisarmedFlee
+    // already used.
+    private func TagCandidate(candidate: ref<GRCandidate>) -> String {
+        return candidate.gang + " " + this.Tag(candidate.entityID, candidate.recordID);
     }
 
     // With a dismemberment mod installed, a hit can leave an NPC missing a limb; if they're also
@@ -408,7 +429,7 @@ public class GRDetection extends ScriptableSystem {
             GRDetectionCall.SendDelayed(this.GetGameInstance(), GRDetectionCall.RunDisarmedFlee(), id, 0.3);
             return;
         }
-        let blocker: String = this.GetFleeBlocker(npc);
+        let blocker: String = this.GetFleeBlocker(npc, true);
         if StrLen(blocker) > 0 {
             this.Debug("Huida por desarme cancelada: " + blocker);
             return;
@@ -435,7 +456,7 @@ public class GRDetection extends ScriptableSystem {
             // hit instead of just the rare, meaningful cases.
             return;
         }
-        let blocker: String = this.GetFleeBlocker(npc);
+        let blocker: String = this.GetFleeBlocker(npc, true);
         if StrLen(blocker) > 0 {
             this.Debug("Huida por desarme (retrasada) cancelada: " + blocker);
             return;
@@ -502,7 +523,12 @@ public class GRDetection extends ScriptableSystem {
         return spawner.HasLineOfSight(player, npc.GetWorldPosition());
     }
 
-    public func GetFleeBlocker(npc: ref<ScriptedPuppet>) -> String {
+    // ignoreRaid: 2026-11-22, user's call - a disarmed/dismembered NPC should still try to flee even
+    // during a raid (the alternative was cowering uselessly in place, which looked broken even though the
+    // raid-wide no-flee rule is intentional for the ordinary last-man-standing case). Only the two
+    // disarmed-flee call sites below pass true; CheckLastStanding and the HUD's cosmetic "can flee"
+    // indicator keep the raid block as-is.
+    public func GetFleeBlocker(npc: ref<ScriptedPuppet>, opt ignoreRaid: Bool) -> String {
         let gi: GameInstance = this.GetGameInstance();
         let settings: ref<GRSettings> = GRSettings.Get(gi);
         if !IsDefined(settings) || !settings.enabled || !settings.lastManFlees {
@@ -512,7 +538,7 @@ public class GRDetection extends ScriptableSystem {
             return "not eligible";
         }
         let spawner: ref<GRSpawner> = GRSpawner.Get(gi);
-        if IsDefined(spawner) && spawner.IsRaidActive() {
+        if !ignoreRaid && IsDefined(spawner) && spawner.IsRaidActive() {
             return "raid";
         }
         if VehicleComponent.IsMountedToVehicle(gi, npc) || VehicleComponent.IsMountedToVehicle(gi, GetPlayer(gi)) {
@@ -573,6 +599,7 @@ public class GRDetection extends ScriptableSystem {
             if mode == 7 {
                 let reactions: ref<ReactionManagerComponent> = puppet.GetStimReactionComponent();
                 candidate.nativeFlee = IsDefined(reactions) && reactions.GRForceFlee(player);
+                candidate.nativeFleePulse = 0.0;
                 this.Debug("Huida nativa (modo H): " + (candidate.nativeFlee ? "reaccion Flee pedida" : "sin componente de reacciones, se usa el flash"));
             }
         }
@@ -592,7 +619,7 @@ public class GRDetection extends ScriptableSystem {
 
         GameObject.PlayVoiceOver(npc, n"fear_run", n"Scripts:GangRetaliation");
         this.SayFleeLine(npc, candidate.gang);
-        this.Debug("Huye (" + reason + ", modo " + IntToString(mode) + "): " + candidate.gang + " vida " + FloatToString(candidate.health) + "%");
+        this.Debug("Huye (" + reason + ", modo " + IntToString(mode) + "): " + this.TagCandidate(candidate) + " vida " + FloatToString(candidate.health) + "%");
     }
 
     private func ApplyFleeMode(puppet: ref<NPCPuppet>, player: ref<PlayerPuppet>, mode: Int32) {
@@ -646,7 +673,7 @@ public class GRDetection extends ScriptableSystem {
         }
         npc.GetAttitudeAgent().SetAttitudeTowards(player.GetAttitudeAgent(), EAIAttitude.AIA_Hostile);
         StimBroadcasterComponent.SendStimDirectly(player, gamedataStimType.CombatHit, npc);
-        this.Debug("Huida cortada: " + reason + " (" + candidate.gang + ")");
+        this.Debug("Huida cortada: " + reason + " (" + this.TagCandidate(candidate) + ")");
     }
 
     private func Hide(npc: ref<ScriptedPuppet>, candidate: ref<GRCandidate>) {
@@ -660,11 +687,11 @@ public class GRDetection extends ScriptableSystem {
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
         if IsDefined(player) && !player.IsInCombat() {
             this.PromoteFled(candidate);
-            this.Debug("Escondido con el combate terminado: " + candidate.gang);
+            this.Debug("Escondido con el combate terminado: " + this.TagCandidate(candidate));
             return;
         }
         this.UpsertCandidate(npc);
-        this.Debug("Se esconde: " + candidate.gang + " a " + FloatToString(this.DistanceToPlayer(npc)) + " m de V");
+        this.Debug("Se esconde: " + this.TagCandidate(candidate) + " a " + FloatToString(this.DistanceToPlayer(npc)) + " m de V");
     }
 
     private func DistanceToPlayer(npc: ref<ScriptedPuppet>) -> Float {
@@ -685,12 +712,22 @@ public class GRDetection extends ScriptableSystem {
                 done = true;
             } else {
                 if GRDetection.IsNeutralized(npc) {
-                    this.Debug("Escondido abandonado: neutralizado por otra via (" + candidate.gang + ")");
+                    this.Debug("Escondido abandonado: neutralizado por otra via (" + this.TagCandidate(candidate) + ")");
                     done = true;
                 } else {
                     if candidate.discovered {
-                        this.StopFlee(npc, candidate, "V encontro al escondido");
-                        done = true;
+                        // 2026-11-22: StopFlee() unconditionally turns the NPC hostile again regardless of
+                        // whether they can actually fight - reported in game as a disarmed, limb-missing
+                        // NPC getting spotted while hiding, walking back into combat, and "couldn't do
+                        // anything." If they're still disarmed and missing a limb, let them keep trying to
+                        // hide/flee instead of forcing a pointless re-engagement.
+                        if GRDetection.HasMissingLimb(npc) && !this.HasWeaponEquipped(npc) {
+                            candidate.discovered = false;
+                            this.Debug("Escondido encontrado pero desarmado y mutilado: sigue escondiendose en vez de volver al combate (" + this.TagCandidate(candidate) + ")");
+                        } else {
+                            this.StopFlee(npc, candidate, "V encontro al escondido");
+                            done = true;
+                        }
                     } else {
                         if this.WasPromoted(candidate.entityID) && this.DistanceToPlayer(npc) > 100.0 {
                             done = true;
@@ -724,7 +761,7 @@ public class GRDetection extends ScriptableSystem {
         if IsDefined(spawner) && spawner.IsOwnSpawn(candidate.entityID) {
             this.PromoteFled(candidate);
             spawner.Vanish(candidate.entityID);
-            this.Debug("Escondido desaparece tras perderse de vista 3 s (spawn propio): " + candidate.gang);
+            this.Debug("Escondido desaparece tras perderse de vista 3 s (spawn propio): " + this.TagCandidate(candidate));
             return true;
         }
         let pos: Vector4 = GRHidingDespawnSpot();
@@ -737,8 +774,18 @@ public class GRDetection extends ScriptableSystem {
         if IsDefined(puppet) {
             GRMoveTo(puppet, pos, moveMovementType.Walk, 0.5);
         }
+        // 2026-11-22: this used to stop here, leaving the NPC alive forever at the Badlands spot - the
+        // reported bug ("doesn't disappear, comes back knocked out after a save load"). Checked the vanilla
+        // script dump for a safer native despawn call scoped to a non-dynamically-spawned NPC first:
+        // CommunitySystem (the real owner of a wild gang NPC's spawn slot) exposes no per-entity despawn
+        // method to script at all, and the only two that exist anywhere (PreventionSpawnSystem.RequestDespawn,
+        // CompanionSystem.DespawnSubcharacter) are both hard-scoped to NCPD units / unique companions, not
+        // generic gang mooks. No safer alternative exists, so this now does what own-spawn already does
+        // successfully (see GRSpawner.Vanish, same DeleteEntity call) - deferred a few seconds past the pin
+        // so it's not deleted out from under its own still-finishing move command. Not yet confirmed in game.
+        GRDetectionCall.SendDelayed(gi, GRDetectionCall.DespawnVanished(), candidate.entityID, 3.0);
         this.PromoteFled(candidate);
-        this.Debug("Escondido desaparece tras perderse de vista 3 s: " + candidate.gang);
+        this.Debug("Escondido desaparece tras perderse de vista 3 s: " + this.TagCandidate(candidate));
         return true;
     }
 
@@ -782,14 +829,14 @@ public class GRDetection extends ScriptableSystem {
             let done: Bool = false;
             if !IsDefined(npc) {
                 if candidate.ddSpawn {
-                    this.Debug("Huida descartada: Drug Dealer borro a su NPC (" + candidate.gang + ")");
+                    this.Debug("Huida descartada: Drug Dealer borro a su NPC (" + this.TagCandidate(candidate) + ")");
                 } else {
                     this.PromoteFled(candidate);
                 }
                 done = true;
             } else {
                 if GRDetection.IsNeutralized(npc) {
-                    this.Debug("Huida abandonada: neutralizado por otra via, nunca llego a esconderse (" + candidate.gang + ")");
+                    this.Debug("Huida abandonada: neutralizado por otra via, nunca llego a esconderse (" + this.TagCandidate(candidate) + ")");
                     done = true;
                 } else {
                     candidate.health = this.GetHealthPercent(npc);
@@ -805,9 +852,30 @@ public class GRDetection extends ScriptableSystem {
                     } else {
                         candidate.unseen += 1.0;
                     }
-                    this.Debug("Huida en curso: " + candidate.gang + " (spawn propio=" + (ownSpawn ? "si" : "no") + ") visto=" + (sees ? "si" : "no")
+                    this.Debug("Huida en curso: " + this.TagCandidate(candidate) + " (spawn propio=" + (ownSpawn ? "si" : "no") + ") visto=" + (sees ? "si" : "no")
                         + " sin ver=" + FloatToString(candidate.unseen) + "s distancia a V=" + FloatToString(distance)
                         + "m recorrido=" + FloatToString(run) + "m transcurrido=" + FloatToString(elapsed) + "s");
+                    // 2026-11-22: the native Flee reaction (mode 7) is a one-shot stim reaction, not a
+                    // standing order - the vanilla behavior tree can run it to completion (e.g. after
+                    // reaching what it considers a safe distance) and just leave the NPC idling in place,
+                    // still Neutral, with nobody left to tell them to keep moving. Re-affirming the same
+                    // reaction every few seconds for as long as this candidate is still tracked as fleeing
+                    // keeps them actually running instead of freezing mid-flee. Applies to every fleeing
+                    // candidate (own-spawn Nemesis or wild gang NPC alike), not just Nemeses.
+                    if candidate.nativeFlee {
+                        candidate.nativeFleePulse += 1.0;
+                        if candidate.nativeFleePulse >= 6.0 {
+                            candidate.nativeFleePulse = 0.0;
+                            let puppet: ref<NPCPuppet> = npc as NPCPuppet;
+                            if IsDefined(puppet) && IsDefined(player) {
+                                let reactions: ref<ReactionManagerComponent> = puppet.GetStimReactionComponent();
+                                if IsDefined(reactions) {
+                                    reactions.GRForceFlee(player);
+                                    this.Debug("Huida nativa: refuerzo periodico para seguir huyendo (" + this.TagCandidate(candidate) + ")");
+                                }
+                            }
+                        }
+                    }
                     if ownSpawn {
                         if (candidate.unseen >= 3.0 && distance > 25.0) || distance > 50.0 {
                             this.PromoteFled(candidate);
@@ -869,7 +937,7 @@ public class GRDetection extends ScriptableSystem {
         if IsDefined(spawner) && spawner.IsOwnSpawn(id) {
             this.PromoteFled(candidate);
             spawner.Vanish(id);
-            this.Debug("Desaparece con flash (spawn propio): " + candidate.gang);
+            this.Debug("Desaparece con flash (spawn propio): " + this.TagCandidate(candidate));
             return;
         }
         let player: ref<PlayerPuppet> = GetPlayer(gi);
@@ -882,7 +950,7 @@ public class GRDetection extends ScriptableSystem {
         }
         ArrayPush(this.m_hiding, candidate);
         this.PromoteFled(candidate);
-        this.Debug("Desaparece con flash (del mundo, a " + FloatToString(this.DistanceToPlayer(npc)) + " m): " + candidate.gang);
+        this.Debug("Desaparece con flash (del mundo, a " + FloatToString(this.DistanceToPlayer(npc)) + " m): " + this.TagCandidate(candidate));
     }
 
     public func GetFleeMode() -> Int32 {
@@ -918,6 +986,19 @@ public class GRDetection extends ScriptableSystem {
             let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
             if IsDefined(player) {
                 StatusEffectHelper.RemoveStatusEffect(player, GRBlindEffect());
+            }
+            return;
+        }
+        if kind == GRDetectionCall.DespawnVanished() {
+            // Guard against a stale/already-gone id (e.g. the entity unloaded on its own in the meantime)
+            // the same way GRSafeTeleportSpot's own callers already do elsewhere - DeleteEntity on a bad id
+            // is untested territory, so don't hand it one if we can avoid it.
+            let vanished: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), id) as ScriptedPuppet;
+            if IsDefined(vanished) {
+                this.Debug("Escondido (fuera del mundo) finalmente eliminado (" + this.Tag(id, vanished.GetRecordID()) + ")");
+                GameInstance.GetDynamicEntitySystem().DeleteEntity(id);
+            } else {
+                this.Debug("Escondido (fuera del mundo): ya no existia al llegar la eliminacion diferida, nada que borrar (" + EntityID.ToDebugString(id) + ")");
             }
             return;
         }
@@ -1048,7 +1129,7 @@ public class GRDetection extends ScriptableSystem {
                 let unconscious: Bool = ScriptedPuppet.IsDefeated(npc) || ScriptedPuppet.IsUnconscious(npc);
 
                 let msg: String = "Fin de combate: ";
-                msg += candidate.gang;
+                msg += this.TagCandidate(candidate);
                 msg += " vida ";
                 msg += FloatToString(candidate.health);
                 msg += "%";
@@ -1069,11 +1150,11 @@ public class GRDetection extends ScriptableSystem {
                         if RandRange(0, 100) < settings.knockoutChancePercent {
                             this.Promote(candidate, "knockedout");
                         } else {
-                            this.Debug("Derribo: tirada fallida (" + IntToString(settings.knockoutChancePercent) + "%), no se registra: " + candidate.gang);
+                            this.Debug("Derribo: tirada fallida (" + IntToString(settings.knockoutChancePercent) + "%), no se registra: " + this.TagCandidate(candidate));
                         }
                     } else {
                         if !pacified && !candidate.wasAware {
-                            this.Debug("Derribo sigiloso: no se registra (nunca vio a V, nemesisId=" + IntToString(candidate.nemesisId) + "): " + candidate.gang);
+                            this.Debug("Derribo sigiloso: no se registra (nunca vio a V, nemesisId=" + IntToString(candidate.nemesisId) + "): " + this.TagCandidate(candidate));
                         }
                     }
                 } else if !pacified && !candidate.fleeing && candidate.health > 0.0 && (candidate.health <= threshold || candidate.fled) {
@@ -1116,6 +1197,28 @@ public class GRDetection extends ScriptableSystem {
         this.AddCombatant(target.GetEntityID());
         this.MakeFleeMode(target, this.m_fleeMode, "debug");
         return true;
+    }
+
+    // Returns a readable summary instead of just logging, so it's visible on the dev overlay
+    // (GR.lastAction) without needing Debug Log/On-Screen Debug enabled first.
+    public func DebugWeaponLookAt() -> String {
+        let target: ref<ScriptedPuppet> = this.GetLookAtNPC();
+        if !IsDefined(target) {
+            return "sin objetivo valido";
+        }
+        return "Der: " + this.DescribeWeaponSlot(target, t"AttachmentSlots.WeaponRight")
+            + " | Izq: " + this.DescribeWeaponSlot(target, t"AttachmentSlots.WeaponLeft")
+            + " | miembro perdido=" + (GRDetection.HasMissingLimb(target) ? "si" : "no");
+    }
+
+    private func DescribeWeaponSlot(npc: ref<ScriptedPuppet>, slot: TweakDBID) -> String {
+        let item: wref<ItemObject> = GameInstance.GetTransactionSystem(this.GetGameInstance()).GetItemInSlot(npc, slot);
+        if !IsDefined(item) {
+            return "vacio";
+        }
+        let itemType: gamedataItemType = RPGManager.GetItemType(item.GetItemData().GetID());
+        let isFistsLike: Bool = GRDetection.IsNotARealWeapon(itemType);
+        return EnumValueToString("gamedataItemType", Cast<Int64>(EnumInt(itemType))) + (isFistsLike ? " (no cuenta)" : " (arma real)");
     }
 
     private func PromoteFled(candidate: ref<GRCandidate>) {
@@ -1230,6 +1333,7 @@ public class GRDetectionCall extends DelayCallback {
     public static func NPCDeathByV() -> Int32 { return 7; }
     public static func PlayerTakedownNPC() -> Int32 { return 8; }
     public static func RunDisarmedFlee() -> Int32 { return 9; }
+    public static func DespawnVanished() -> Int32 { return 10; }
 
     public static func Send(gi: GameInstance, kind: Int32, id: EntityID) {
         GRDetectionCall.SendDelayed(gi, kind, id, 0.0);

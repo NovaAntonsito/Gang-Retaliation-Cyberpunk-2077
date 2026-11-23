@@ -45,6 +45,7 @@ public class GRMenuData extends ScriptableSystem {
     private let m_page: Int32;
     private let m_arsenalPage: Int32;
     private let m_pendingView: Int32;
+    private let m_pendingBountyFocus: Int32;
     private let m_bountyMode: Bool;
     private let m_bountyLayoutLogged: Bool;
 
@@ -114,6 +115,18 @@ public class GRMenuData extends ScriptableSystem {
         let view: Int32 = this.m_pendingView - 1;
         this.m_pendingView = 0;
         return view;
+    }
+
+    // Lets clicking a Nemesis's bounty badge in the GANGS detail panel land on that same contract once
+    // InitBounty (Menu.reds) opens - same +1/-1 "0 means none" encoding as m_pendingView above.
+    public func RequestBountyFocus(nemesisId: Int32) {
+        this.m_pendingBountyFocus = nemesisId + 1;
+    }
+
+    public func ConsumeBountyFocus() -> Int32 {
+        let id: Int32 = this.m_pendingBountyFocus - 1;
+        this.m_pendingBountyFocus = 0;
+        return id;
     }
 
     private static func ViewIndex(view: CName) -> Int32 {
@@ -313,6 +326,14 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     private let m_tabBars: array<wref<inkRectangle>>;
     private let m_tabThreats: array<wref<inkRectangle>>;
     private let m_selName: String;
+    private let m_detailTab: Int32;   // 0 Information, 1 History, 2 Gang History
+    private let m_detailTabTexts: array<wref<inkText>>;
+    private let m_detailTabBorders: array<wref<inkImage>>;
+    private let m_detailDay: wref<inkText>;
+    private let m_detailBountyIcon: wref<inkImage>;
+    private let m_detailBountyNemesisId: Int32;
+    private let m_navMenuItem: ref<MenuItemController>;
+    private let m_headerNavTarget: CName;
     private let m_view: Int32;
     private let m_viewArsenal: wref<inkText>;
     private let m_rewards: ref<GRRewards>;
@@ -405,6 +426,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return new HDRColor(0.48, 0.2, 0.19, 1.0);
     }
 
+    private func Orange() -> HDRColor {
+        return new HDRColor(1.0, 0.549, 0.102, 1.0);
+    }
+
     private func Dark() -> HDRColor {
         return new HDRColor(0.054902, 0.054902, 0.090196, 1.0);
     }
@@ -467,6 +492,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.m_page = IsDefined(this.m_data) ? this.m_data.GetPage() : 0;
         this.m_arsenalPage = IsDefined(this.m_data) ? this.m_data.GetArsenalPage() : 0;
         this.m_rewards = GRRewards.Get(this.GetPlayerControlledObject().GetGame());
+        this.m_bounties = GRBounties.Get(this.GetPlayerControlledObject().GetGame());
         this.m_selWeapon = -1;
         let pending: Int32 = IsDefined(this.m_data) ? this.m_data.ConsumePendingView() : -1;
         if pending >= 0 && pending <= 2 {
@@ -476,7 +502,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let root: ref<inkCompoundWidget> = this.GetRootCompoundWidget();
 
         this.CreateBackground(root);
-        this.CreateHeader(root, "GR-MenuTitle");
+        this.CreateHeader(root, "GR-MenuTitle", "GR-BountyTitle", n"gangretaliation_bounty_menu");
         this.CreateRankLabels(root);
 
         let tree: ref<inkCanvas> = new inkCanvas();
@@ -485,7 +511,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         tree.Reparent(root);
         this.m_tree = tree;
 
-        this.CreateDetail(root);
+        this.CreateDetail(root, true);
         this.CreateTerritory(root);
         this.CreateArsenal(root);
         this.CreateViewSwitch(root);
@@ -665,19 +691,60 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return icon;
     }
 
-    private func CreateHeader(root: ref<inkCompoundWidget>, titleKey: String) {
+    // navTitleKey/navTarget let the screen's own title button open the OTHER top-level GangRetaliation
+    // menu scenario (NEMESES <-> BOUNTY BOARD) - a chamfered tile matching the Information tab's look,
+    // right of the title text itself rather than hanging off the bottom of the view switcher.
+    private func CreateHeader(root: ref<inkCompoundWidget>, titleKey: String, opt navTitleKey: String, opt navTarget: CName) {
         this.AddFullLine(root, 150.0);
         this.AddFullLine(root, 336.0);
 
+        let titleRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        titleRow.SetAnchor(inkEAnchor.TopLeft);
+        titleRow.SetMargin(new inkMargin(120.0, 168.0, 0.0, 0.0));
+        titleRow.SetFitToContent(true);
+        titleRow.Reparent(root);
+
         let title: ref<inkText> = this.NewText(this.Up(this.T(titleKey)), 64, this.Red(), n"Medium");
-        title.SetAnchor(inkEAnchor.TopLeft);
-        title.SetMargin(new inkMargin(120.0, 184.0, 0.0, 0.0));
-        title.Reparent(root);
+        title.Reparent(titleRow);
+
+        if StrLen(navTitleKey) > 0 {
+            let navBtn: ref<inkCanvas> = new inkCanvas();
+            navBtn.SetName(n"gr_header_nav");
+            navBtn.SetSize(new Vector2(320.0, 56.0));
+            navBtn.SetMargin(new inkMargin(40.0, 0.0, 0.0, 0.0));
+            navBtn.SetVAlign(inkEVerticalAlign.Center);
+            navBtn.SetInteractive(true);
+            navBtn.RegisterToCallback(n"OnRelease", this, n"OnGRHeaderNavClick");
+            navBtn.Reparent(titleRow);
+            this.m_headerNavTarget = navTarget;
+
+            let navBg: ref<inkImage> = new inkImage();
+            navBg.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+            navBg.SetTexturePart(n"cell_bg");
+            navBg.SetNineSliceScale(true);
+            navBg.SetAnchor(inkEAnchor.Fill);
+            navBg.SetTintColor(this.Dark());
+            navBg.SetOpacity(0.95);
+            navBg.Reparent(navBtn);
+
+            let navFrame: ref<inkImage> = new inkImage();
+            navFrame.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+            navFrame.SetTexturePart(n"cell_fg");
+            navFrame.SetNineSliceScale(true);
+            navFrame.SetAnchor(inkEAnchor.Fill);
+            navFrame.SetTintColor(this.Gold());
+            navFrame.Reparent(navBtn);
+
+            let navText: ref<inkText> = this.NewText(this.Up(this.T(navTitleKey)), 28, this.Gold(), n"Bold");
+            navText.SetAnchor(inkEAnchor.Centered);
+            navText.SetAnchorPoint(new Vector2(0.5, 0.5));
+            navText.Reparent(navBtn);
+        }
 
         let summary: ref<inkText> = this.NewText("", 40, this.Gold(), n"Medium");
         summary.SetAnchor(inkEAnchor.TopRight);
         summary.SetAnchorPoint(new Vector2(1.0, 0.0));
-        summary.SetMargin(new inkMargin(0.0, 200.0, 120.0, 0.0));
+        summary.SetMargin(new inkMargin(0.0, 272.0, 120.0, 0.0));
         summary.Reparent(root);
         this.m_summary = summary;
 
@@ -734,7 +801,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         }
     }
 
-    private func CreateDetail(root: ref<inkCompoundWidget>) {
+    // withTabs: the Nemeses screen's own GANGS detail panel gets the Information/History/Gang History
+    // sub-tabs and the "Current Day" readout; the Bounty board reuses this same canvas (InitBounty) for
+    // its own, unrelated contract detail and must NOT get them, so it calls this with the default (false).
+    private func CreateDetail(root: ref<inkCompoundWidget>, opt withTabs: Bool) {
         let detail: ref<inkCanvas> = new inkCanvas();
         detail.SetName(n"detail");
         detail.SetAnchor(inkEAnchor.TopLeft);
@@ -746,6 +816,100 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.AddFill(detail, this.Panel(), 0.95);
         this.AddBorder(detail, this.Red(), 2.0, 0.45);
 
+        // Shared chrome for all 3 sub-tabs: Information/History/Gang History as bordered button tiles across
+        // the top (same bordered-tile look as the game's own category-selector rows), eating into the
+        // header's usual top margin so the box reads as shorter than before. The "Current Day" readout is
+        // NOT part of the box - it lives on the screen itself, Cyan, top-right corner, directly above the
+        // existing Gold summary line from CreateHeader (this.m_summary), matching where
+        // GangRetaliationHistory's original standalone screen drew it.
+        let topOffset: Float = 0.0;
+        if withTabs {
+            topOffset = 92.0;
+            let tabRow: ref<inkCanvas> = new inkCanvas();
+            tabRow.SetAnchor(inkEAnchor.TopLeft);
+            tabRow.SetMargin(new inkMargin(56.0, 24.0, 0.0, 0.0));
+            tabRow.SetSize(new Vector2(888.0, 56.0));
+            tabRow.Reparent(detail);
+
+            let day: ref<inkText> = this.NewText("", 48, this.Cyan(), n"Bold");
+            day.SetAnchor(inkEAnchor.TopRight);
+            day.SetAnchorPoint(new Vector2(1.0, 0.0));
+            day.SetMargin(new inkMargin(0.0, 184.0, 120.0, 0.0));
+            day.Reparent(root);
+            this.m_detailDay = day;
+
+            // Active-bounty badge for the Information/History sub-tabs (their headers match: rank | gang,
+            // name, title) - hidden on Gang History, which has no single Nemesis to badge. Top aligned
+            // with the rank|gang line (header's own margin-top below, 52 + topOffset = 144) rather than
+            // the tab row above it. Reuses the exact icon GRBountyZoneMappinData.IconPart() puts on the
+            // Bounty Board's own search-zone mappin ("bounty_hunt" - the vanilla Phantom Liberty wanted-
+            // poster look), on its own atlas rather than the shapes one everything else here uses.
+            // Clickable: opens the Bounty Board already focused on this Nemesis's contract (OpenGRMenu).
+            let bountyIcon: ref<inkImage> = new inkImage();
+            bountyIcon.SetAtlasResource(r"base\\gameplay\\gui\\common\\icons\\mappin_icons.inkatlas");
+            bountyIcon.SetTexturePart(n"bounty_hunt");
+            bountyIcon.SetAnchor(inkEAnchor.TopRight);
+            bountyIcon.SetAnchorPoint(new Vector2(1.0, 0.0));
+            bountyIcon.SetMargin(new inkMargin(0.0, 144.0, 16.0, 0.0));
+            bountyIcon.SetSize(new Vector2(88.0, 88.0));
+            bountyIcon.SetTintColor(this.Gold());
+            bountyIcon.SetVisible(false);
+            bountyIcon.SetInteractive(true);
+            bountyIcon.RegisterToCallback(n"OnRelease", this, n"OnGRBountyBadgeClick");
+            bountyIcon.Reparent(detail);
+            this.m_detailBountyIcon = bountyIcon;
+            this.m_detailBountyNemesisId = -1;
+
+            let names: array<String>;
+            ArrayPush(names, StrUpper(this.T("GR-DetailTabInfo")));
+            ArrayPush(names, StrUpper(this.T("GR-DetailTabHistory")));
+            ArrayPush(names, StrUpper(this.T("GR-DetailTabGangHistory")));
+            let tabW: Float = 288.0;
+            let tabGap: Float = 12.0;
+            let x: Float = 0.0;
+            let i: Int32 = 0;
+            while i < 3 {
+                let tab: ref<inkCanvas> = new inkCanvas();
+                tab.SetName(StringToName("gr_detail_tab_" + IntToString(i)));
+                tab.SetAnchor(inkEAnchor.TopLeft);
+                tab.SetMargin(new inkMargin(x, 0.0, 0.0, 0.0));
+                tab.SetSize(new Vector2(tabW, 56.0));
+                tab.SetInteractive(true);
+                tab.RegisterToCallback(n"OnRelease", this, n"OnGRDetailTabClick");
+                tab.Reparent(tabRow);
+
+                // Same chamfered cell_bg/cell_fg vanilla shapes AddCard uses for its own cards/selection
+                // frame, so these read as the game's own cut-corner tiles instead of plain rectangles.
+                let bg: ref<inkImage> = new inkImage();
+                bg.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+                bg.SetTexturePart(n"cell_bg");
+                bg.SetNineSliceScale(true);
+                bg.SetAnchor(inkEAnchor.Fill);
+                bg.SetTintColor(this.Dark());
+                bg.SetOpacity(0.95);
+                bg.Reparent(tab);
+
+                let border: ref<inkImage> = new inkImage();
+                border.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+                border.SetTexturePart(n"cell_fg");
+                border.SetNineSliceScale(true);
+                border.SetAnchor(inkEAnchor.Fill);
+                border.SetTintColor(i == 0 ? this.Cyan() : this.DarkRed());
+                border.SetOpacity(i == 0 ? 1.0 : 0.55);
+                border.Reparent(tab);
+                ArrayPush(this.m_detailTabBorders, border);
+
+                let text: ref<inkText> = this.NewText(names[i], 24, i == 0 ? this.Cyan() : this.Grey(), n"Bold");
+                text.SetAnchor(inkEAnchor.Centered);
+                text.SetAnchorPoint(new Vector2(0.5, 0.5));
+                text.Reparent(tab);
+                ArrayPush(this.m_detailTabTexts, text);
+
+                x += tabW + tabGap;
+                i += 1;
+            }
+        }
+
         // Fixed, non-scrolling header: rank/gang line, name, title. Everything below it (contact tag
         // through Origin) scrolls instead of spilling past the card's bottom edge - contentHeight is a
         // fixed estimate of the header's own height (rank line + a single-line name + title; names in
@@ -754,14 +918,14 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         // it so it sits centered in the space rather than hugging either side.
         let header: ref<inkVerticalPanel> = new inkVerticalPanel();
         header.SetAnchor(inkEAnchor.TopLeft);
-        header.SetMargin(new inkMargin(56.0, 52.0, 0.0, 0.0));
+        header.SetMargin(new inkMargin(56.0, 52.0 + topOffset, 0.0, 0.0));
         header.Reparent(detail);
         this.m_detailHeader = header;
 
         let contentHeight: Float = 162.0;
         let gap: Float = 20.0;
-        let dividerY: Float = 52.0 + contentHeight + gap;
-        let headerHeight: Float = dividerY + 2.0 + gap - 52.0;
+        let dividerY: Float = 52.0 + topOffset + contentHeight + gap;
+        let headerHeight: Float = dividerY + 2.0 + gap - 52.0 - topOffset;
         let divider: ref<inkRectangle> = this.NewRect(888.0, 2.0, this.Dim(), 1.0);
         divider.SetAnchor(inkEAnchor.TopLeft);
         divider.SetMargin(new inkMargin(56.0, dividerY, 0.0, 0.0));
@@ -774,10 +938,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         // attempts here: parented outside host, the slider's handle drifted out of the track while
         // scrolling/dragging even with autoSizeHandle corrected, and matching History's structure exactly
         // (bar inside the same canvas the scroll area lives in) is what fixed it.
-        let hostHeight: Float = 1520.0 - 52.0 - headerHeight - 52.0;
+        let hostHeight: Float = 1520.0 - 52.0 - topOffset - headerHeight - 52.0;
         let host: ref<inkCanvas> = new inkCanvas();
         host.SetAnchor(inkEAnchor.TopLeft);
-        host.SetMargin(new inkMargin(56.0, 52.0 + headerHeight, 0.0, 0.0));
+        host.SetMargin(new inkMargin(56.0, 52.0 + topOffset + headerHeight, 0.0, 0.0));
         host.SetSize(new Vector2(928.0, hostHeight));
         host.SetInteractive(true);
         host.Reparent(detail);
@@ -1034,6 +1198,21 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         frame.Reparent(card);
         ArrayPush(this.m_cardFrames, frame);
         this.StyleFrame(frame, entry, selected);
+
+        if IsDefined(this.m_bounties) && this.m_bounties.HasOpenBounty(entry.id) {
+            // Same vanilla "wanted poster" icon the Bounty Board's own search-zone mappin uses
+            // (GRBountyZoneMappinData.IconPart(), Rewards.reds) - see CreateDetail's Information-tab
+            // badge for the matching one in the detail panel.
+            let bountyIcon: ref<inkImage> = new inkImage();
+            bountyIcon.SetAtlasResource(r"base\\gameplay\\gui\\common\\icons\\mappin_icons.inkatlas");
+            bountyIcon.SetTexturePart(n"bounty_hunt");
+            bountyIcon.SetAnchor(inkEAnchor.TopRight);
+            bountyIcon.SetAnchorPoint(new Vector2(1.0, 0.0));
+            bountyIcon.SetMargin(new inkMargin(0.0, small ? 10.0 : 14.0, small ? 10.0 : 14.0, 0.0));
+            bountyIcon.SetSize(new Vector2(small ? 36.0 : 44.0, small ? 36.0 : 44.0));
+            bountyIcon.SetTintColor(this.Gold());
+            bountyIcon.Reparent(card);
+        }
 
         let content: ref<inkVerticalPanel> = new inkVerticalPanel();
         content.SetAnchor(inkEAnchor.Fill);
@@ -1469,17 +1648,54 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     private func FillDetail(entry: ref<GRMenuEntry>) {
-        let header: ref<inkVerticalPanel> = this.m_detailHeader;
-        let panel: ref<inkVerticalPanel> = this.m_detailContent;
-        header.RemoveAllChildren();
-        panel.RemoveAllChildren();
+        this.UpdateDetailDay();
         if !IsDefined(entry) {
+            this.m_detailHeader.RemoveAllChildren();
+            this.m_detailContent.RemoveAllChildren();
             this.m_detail.SetVisible(false);
             return;
         }
         this.m_detail.SetVisible(true);
+        if this.m_detailTab == 1 {
+            this.FillDetailHistory(entry);
+            return;
+        }
+        if this.m_detailTab == 2 {
+            this.FillDetailGangHistory(entry);
+            return;
+        }
+        this.FillDetailInfo(entry);
+    }
+
+    // Shared by Information and History (their headers match - rank | gang, name, title); Gang History
+    // calls HideDetailBountyBadge instead since it has no single Nemesis to badge.
+    private func ShowDetailBountyBadge(entry: ref<GRMenuEntry>) {
+        if !IsDefined(this.m_detailBountyIcon) {
+            return;
+        }
+        let open: Bool = IsDefined(this.m_bounties) && this.m_bounties.HasOpenBounty(entry.id);
+        this.m_detailBountyIcon.SetVisible(open);
+        this.m_detailBountyNemesisId = open ? entry.id : -1;
+    }
+
+    private func HideDetailBountyBadge() {
+        if !IsDefined(this.m_detailBountyIcon) {
+            return;
+        }
+        this.m_detailBountyIcon.SetVisible(false);
+        this.m_detailBountyNemesisId = -1;
+    }
+
+    // sub-tab 0, Information: unchanged content from before the History merge.
+    private func FillDetailInfo(entry: ref<GRMenuEntry>) {
+        let header: ref<inkVerticalPanel> = this.m_detailHeader;
+        let panel: ref<inkVerticalPanel> = this.m_detailContent;
+        header.RemoveAllChildren();
+        panel.RemoveAllChildren();
         let rankColor: HDRColor = this.RankColor(entry.rank);
         let width: Float = 888.0;
+
+        this.ShowDetailBountyBadge(entry);
 
         this.NewText(this.RankName(entry.rank) + "  |  " + this.Up(entry.gang), 28, this.Cyan(), n"Bold").Reparent(header);
         if entry.dead {
@@ -1573,6 +1789,320 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let origin: ref<inkText> = this.NewWrappedText(this.T("GR-MenuOrigin") + ": " + entry.origin, 32, this.Light(), width);
         origin.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
         origin.Reparent(panel);
+    }
+
+    // ---------------------------------------------------------------- detail panel sub-tabs: History / Gang History
+    protected cb func OnGRDetailTabClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") {
+            return false;
+        }
+        let target: CName = evt.GetCurrentTarget().GetName();
+        let i: Int32 = 0;
+        while i < 3 {
+            if Equals(target, StringToName("gr_detail_tab_" + IntToString(i))) {
+                if i != this.m_detailTab {
+                    this.m_detailTab = i;
+                    this.StyleDetailTabs();
+                    this.RefreshDetailPanel();
+                    this.PlaySound(n"Button", n"OnPress");
+                }
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+
+    private func StyleDetailTabs() {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_detailTabTexts) {
+            let on: Bool = i == this.m_detailTab;
+            this.m_detailTabTexts[i].SetTintColor(on ? this.Cyan() : this.Grey());
+            this.m_detailTabBorders[i].SetTintColor(on ? this.Cyan() : this.DarkRed());
+            this.m_detailTabBorders[i].SetOpacity(on ? 1.0 : 0.55);
+            i += 1;
+        }
+    }
+
+    // re-renders whichever sub-tab is active for the currently selected member, e.g. after a tab click -
+    // selecting a different card already calls FillDetail(entry) directly, this is only for tab clicks.
+    private func RefreshDetailPanel() {
+        let entry: ref<GRMenuEntry> = this.FindEntryByName(this.m_selName);
+        this.FillDetail(entry);
+    }
+
+    private func FindEntryByName(name: String) -> ref<GRMenuEntry> {
+        let i: Int32 = 0;
+        while i < ArraySize(this.m_cards) {
+            if Equals(this.m_cards[i].name, name) {
+                return this.m_cards[i];
+            }
+            i += 1;
+        }
+        i = 0;
+        while i < ArraySize(this.m_fallenCards) {
+            if Equals(this.m_fallenCards[i].name, name) {
+                return this.m_fallenCards[i];
+            }
+            i += 1;
+        }
+        return null;
+    }
+
+    private func UpdateDetailDay() {
+        if !IsDefined(this.m_detailDay) {
+            return;
+        }
+        let spawner: ref<GRSpawner> = GameInstance.GetScriptableSystemsContainer(this.GetPlayerControlledObject().GetGame()).Get(n"GangRetaliation.GRSpawner") as GRSpawner;
+        if IsDefined(spawner) {
+            this.m_detailDay.SetText(this.Fmt(this.T("GRChron-Today"), "%d", IntToString(Cast<Int32>(spawner.GetGameDay()))));
+        }
+    }
+
+    private func KindColor(kind: String) -> HDRColor {
+        if Equals(kind, "DEATH") || Equals(kind, "RAID") || Equals(kind, "ARREST") || Equals(kind, "AMBUSH") || Equals(kind, "BACKUP") || Equals(kind, "WAR") {
+            return this.Red();
+        }
+        if Equals(kind, "PROMOTED") || Equals(kind, "NEWFACE") || Equals(kind, "TERRITORY") || Equals(kind, "STRONGHOLD") {
+            return this.Gold();
+        }
+        if Equals(kind, "RETURNED") || Equals(kind, "TRAIT") || Equals(kind, "RELEASED") || Equals(kind, "WEAPON") || Equals(kind, "INTEL") {
+            return this.Cyan();
+        }
+        if Equals(kind, "VACUUM") {
+            return this.Orange();
+        }
+        return this.Grey();
+    }
+
+    private func KindLabel(kind: String) -> String {
+        return this.T("GRChron-Kind-" + kind);
+    }
+
+    private func DayText(day: Int32) -> String {
+        return this.Fmt(this.T("GR-MenuDay"), "%d", IntToString(day));
+    }
+
+    private func EventsText(count: Int32) -> String {
+        if count == 1 {
+            return this.T("GRChron-Event1");
+        }
+        return this.Fmt(this.T("GRChron-EventN"), "%d", IntToString(count));
+    }
+
+    private func HistoryEventMatches(hist: ref<GRChronData>, i: Int32, memberFilter: String, gangFilter: String) -> Bool {
+        if StrLen(memberFilter) > 0 {
+            return StrContains(hist.Names(i), "|" + memberFilter + "|");
+        }
+        return StrContains(hist.Gangs(i), "|" + gangFilter + "|");
+    }
+
+    private func CountHistoryEvents(hist: ref<GRChronData>, memberFilter: String, gangFilter: String) -> Int32 {
+        if !IsDefined(hist) {
+            return 0;
+        }
+        let total: Int32 = hist.Count();
+        let count: Int32 = 0;
+        let i: Int32 = 0;
+        while i < total {
+            if this.HistoryEventMatches(hist, i, memberFilter, gangFilter) {
+                count += 1;
+            }
+            i += 1;
+        }
+        return count;
+    }
+
+    // sub-tab 1, History: the selected member's own events (memberFilter = their name).
+    private func FillDetailHistory(entry: ref<GRMenuEntry>) {
+        let header: ref<inkVerticalPanel> = this.m_detailHeader;
+        let panel: ref<inkVerticalPanel> = this.m_detailContent;
+        header.RemoveAllChildren();
+        panel.RemoveAllChildren();
+        let gi: GameInstance = this.GetPlayerControlledObject().GetGame();
+        let hist: ref<GRChronData> = GRChronData.Get(gi);
+        this.ShowDetailBountyBadge(entry);
+
+        this.NewText(this.RankName(entry.rank) + "  |  " + this.Up(entry.gang), 28, this.Cyan(), n"Bold").Reparent(header);
+        if entry.dead {
+            // Same white name + red strikethrough as the Information tab's fallen look (FillDetailInfo).
+            let nameWrap: ref<inkCanvas> = new inkCanvas();
+            nameWrap.SetAnchor(inkEAnchor.TopLeft);
+            nameWrap.SetSize(new Vector2(888.0, 80.0));
+            nameWrap.Reparent(header);
+            let deadName: ref<inkText> = this.NewWrappedText(entry.name, 66, this.Light(), 888.0);
+            deadName.SetFontStyle(n"Bold");
+            deadName.Reparent(nameWrap);
+            let strikeWidth: Float = MinF(Cast<Float>(StrLen(entry.name)) * 30.0, 888.0);
+            let strike: ref<inkRectangle> = this.NewRect(strikeWidth, 4.0, this.Red(), 0.8);
+            strike.SetAnchor(inkEAnchor.TopLeft);
+            strike.SetMargin(new inkMargin(0.0, 45.0, 0.0, 0.0));
+            strike.Reparent(nameWrap);
+        } else {
+            let name: ref<inkText> = this.NewWrappedText(entry.name, 66, this.RankColor(entry.rank), 888.0);
+            name.SetFontStyle(n"Bold");
+            name.Reparent(header);
+        }
+        if StrLen(entry.title) > 0 {
+            this.NewText("\"" + entry.title + "\"", 42, this.Light(), n"Regular").Reparent(header);
+        }
+
+        let count: Int32 = this.CountHistoryEvents(hist, entry.name, "");
+        let countLine: String = this.EventsText(count);
+        if entry.dead {
+            countLine += "  |  " + entry.cause;
+        }
+        // Below the divider, same as the Information tab's first content-panel child (the KNOWS YOU tag) -
+        // not in header, which is sized for a fixed rank/name/title height shared with Information so the
+        // divider lands in the same place on every sub-tab.
+        let countText: ref<inkText> = this.NewText(countLine, 26, this.Grey(), n"Medium");
+        countText.SetMargin(new inkMargin(0.0, 0.0, 0.0, 10.0));
+        countText.Reparent(panel);
+
+        this.BuildHistoryRows(panel, hist, entry.name, "");
+    }
+
+    // sub-tab 2, Gang History: every event tagged with the selected member's whole gang (gangFilter = gangKey).
+    private func FillDetailGangHistory(entry: ref<GRMenuEntry>) {
+        let header: ref<inkVerticalPanel> = this.m_detailHeader;
+        let panel: ref<inkVerticalPanel> = this.m_detailContent;
+        header.RemoveAllChildren();
+        panel.RemoveAllChildren();
+        let gi: GameInstance = this.GetPlayerControlledObject().GetGame();
+        let hist: ref<GRChronData> = GRChronData.Get(gi);
+        this.HideDetailBountyBadge();
+
+        let gangColor: HDRColor = this.GangColor(entry.gangKey);
+        let name: ref<inkText> = this.NewWrappedText(this.Up(entry.gang), 66, gangColor, 888.0);
+        name.SetFontStyle(n"Bold");
+        name.Reparent(header);
+
+        let count: Int32 = this.CountHistoryEvents(hist, "", entry.gangKey);
+        let countText: ref<inkText> = this.NewText(this.EventsText(count), 26, this.Grey(), n"Medium");
+        countText.SetMargin(new inkMargin(0.0, 0.0, 0.0, 10.0));
+        countText.Reparent(panel);
+
+        this.BuildHistoryRows(panel, hist, "", entry.gangKey);
+    }
+
+    private func BuildHistoryRows(panel: ref<inkVerticalPanel>, hist: ref<GRChronData>, memberFilter: String, gangFilter: String) {
+        if !IsDefined(hist) || hist.Count() == 0 {
+            let none: ref<inkText> = this.NewWrappedText(this.T("GRChron-NoHistory"), 30, this.Dim(), 888.0);
+            none.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
+            none.Reparent(panel);
+            return;
+        }
+        let total: Int32 = hist.Count();
+        let lastDay: Int32 = -1;
+        let shown: Int32 = 0;
+        // Newest first: the Day readout above already shows "now", so we walk the log backwards.
+        let i: Int32 = total - 1;
+        while i >= 0 {
+            if this.HistoryEventMatches(hist, i, memberFilter, gangFilter) {
+                let day: Int32 = hist.Day(i);
+                this.AddHistoryRow(panel, day, day != lastDay, hist.Kind(i), this.RenderHistoryText(hist.Text(i)));
+                lastDay = day;
+                shown += 1;
+            }
+            i -= 1;
+        }
+        if shown == 0 {
+            let noneHere: ref<inkText> = this.NewWrappedText(this.T("GRChron-NoEventsHere"), 30, this.Dim(), 888.0);
+            noneHere.SetMargin(new inkMargin(0.0, 24.0, 0.0, 0.0));
+            noneHere.Reparent(panel);
+        }
+    }
+
+    // Territory's "Recent Rumors" row, styled to match AddHistoryRow (day/rail/dot/kind label/message) -
+    // the day here is already a formatted string from GRMenuData.AddRumor (Lua passes "DAY %d" pre-built,
+    // not a raw day number), unlike History's Int32 day, so this takes the string directly and always
+    // shows it (there's no previous-row day to compare against, unlike History's showDay compaction) -
+    // and kind is fixed to "WAR" since every rumor here already is one (AddRumor's only caller is the war
+    // rumor feed), giving the same red dot/"WAR" label History already uses for war events.
+    private func AddRumorRow(panel: ref<inkVerticalPanel>, dayStr: String, text: String, width: Float) {
+        let color: HDRColor = this.KindColor("WAR");
+
+        let row: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        row.SetMargin(new inkMargin(0.0, 0.0, 0.0, 16.0));
+        row.Reparent(panel);
+
+        let dayBox: ref<inkCanvas> = new inkCanvas();
+        dayBox.SetSize(new Vector2(160.0, 10.0));
+        dayBox.SetVAlign(inkEVerticalAlign.Fill);
+        dayBox.Reparent(row);
+        let dayLabel: ref<inkText> = this.NewText(dayStr, 32, this.Cyan(), n"Bold");
+        dayLabel.SetAnchor(inkEAnchor.TopLeft);
+        dayLabel.Reparent(dayBox);
+
+        let rail: ref<inkCanvas> = new inkCanvas();
+        rail.SetSize(new Vector2(40.0, 10.0));
+        rail.SetVAlign(inkEVerticalAlign.Fill);
+        rail.Reparent(row);
+        let line: ref<inkRectangle> = new inkRectangle();
+        line.SetAnchor(inkEAnchor.LeftFillVerticaly);
+        line.SetMargin(new inkMargin(18.0, 0.0, 0.0, 0.0));
+        line.SetWidth(2.0);
+        line.SetTintColor(this.Dim());
+        line.SetOpacity(0.8);
+        line.Reparent(rail);
+        let dot: ref<inkRectangle> = this.NewRect(14.0, 14.0, color, 1.0);
+        dot.SetAnchor(inkEAnchor.TopLeft);
+        dot.SetMargin(new inkMargin(13.0, 16.0, 0.0, 0.0));
+        dot.Reparent(rail);
+
+        let textCol: ref<inkVerticalPanel> = new inkVerticalPanel();
+        textCol.SetFitToContent(true);
+        textCol.Reparent(row);
+        let message: ref<inkText> = this.NewWrappedText(text, 32, this.Light(), width - 200.0);
+        message.Reparent(textCol);
+    }
+
+    private func AddHistoryRow(panel: ref<inkVerticalPanel>, day: Int32, showDay: Bool, kind: String, text: String) {
+        if showDay {
+            let spacer: ref<inkCanvas> = new inkCanvas();
+            spacer.SetSize(new Vector2(10.0, 20.0));
+            spacer.Reparent(panel);
+        }
+        let color: HDRColor = this.KindColor(kind);
+
+        let row: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        row.SetFitToContent(true);
+        row.Reparent(panel);
+
+        let dayBox: ref<inkCanvas> = new inkCanvas();
+        dayBox.SetSize(new Vector2(160.0, 10.0));
+        dayBox.SetVAlign(inkEVerticalAlign.Fill);
+        dayBox.Reparent(row);
+        if showDay {
+            let dayLabel: ref<inkText> = this.NewText(this.DayText(day), 32, this.Cyan(), n"Bold");
+            dayLabel.SetAnchor(inkEAnchor.TopLeft);
+            dayLabel.Reparent(dayBox);
+        }
+
+        let rail: ref<inkCanvas> = new inkCanvas();
+        rail.SetSize(new Vector2(40.0, 10.0));
+        rail.SetVAlign(inkEVerticalAlign.Fill);
+        rail.Reparent(row);
+        let line: ref<inkRectangle> = new inkRectangle();
+        line.SetAnchor(inkEAnchor.LeftFillVerticaly);
+        line.SetMargin(new inkMargin(18.0, 0.0, 0.0, 0.0));
+        line.SetWidth(2.0);
+        line.SetTintColor(this.Dim());
+        line.SetOpacity(0.8);
+        line.Reparent(rail);
+        let dot: ref<inkRectangle> = this.NewRect(14.0, 14.0, color, 1.0);
+        dot.SetAnchor(inkEAnchor.TopLeft);
+        dot.SetMargin(new inkMargin(13.0, 16.0, 0.0, 0.0));
+        dot.Reparent(rail);
+
+        let textCol: ref<inkVerticalPanel> = new inkVerticalPanel();
+        textCol.SetFitToContent(true);
+        textCol.Reparent(row);
+        let kindLabel: ref<inkText> = this.NewText(this.KindLabel(kind), 32, color, n"Bold");
+        kindLabel.Reparent(textCol);
+        let message: ref<inkText> = this.NewWrappedText(text, 32, this.Light(), 680.0);
+        message.SetMargin(new inkMargin(0.0, 4.0, 0.0, 14.0));
+        message.Reparent(textCol);
     }
 
     private func AddBossWeapon(panel: ref<inkCompoundWidget>, entry: ref<GRMenuEntry>, width: Float) {
@@ -1893,58 +2423,144 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return StrLeft(fmt, i) + value + StrMid(fmt, after, StrLen(fmt) - after);
     }
 
+    // Fills a localized template's "%s"/"%d" placeholders left to right from args, one placeholder per
+    // array entry (unlike Fmt above, which only replaces a single named token once) - used to render
+    // history events from their stored key+args at display time, so a language change shows up immediately
+    // instead of being frozen at whatever language was active when the event happened.
+    private func Substitute(template: String, args: array<String>) -> String {
+        let out: String = template;
+        let result: String = "";
+        let argIndex: Int32 = 0;
+        let guard: Int32 = 0;
+        let searching: Bool = true;
+        while searching && guard < 20 {
+            guard += 1;
+            let posS: Int32 = StrFindFirst(out, "%s");
+            let posD: Int32 = StrFindFirst(out, "%d");
+            let tokenPos: Int32 = -1;
+            if posS >= 0 && (posD < 0 || posS < posD) {
+                tokenPos = posS;
+            } else {
+                if posD >= 0 {
+                    tokenPos = posD;
+                }
+            }
+            if tokenPos < 0 || argIndex >= ArraySize(args) {
+                searching = false;
+            } else {
+                result += StrLeft(out, tokenPos) + args[argIndex];
+                argIndex += 1;
+                out = StrMid(out, tokenPos + 2, StrLen(out) - tokenPos - 2);
+            }
+        }
+        result += out;
+        return result;
+    }
+
+    // Recovers "key|arg1|arg2|..." (as stored by History.record in GRChronData's text slot) back into the
+    // rendered sentence shown in a history row, using whichever language is active right now - not whatever
+    // was active when the event was recorded.
+    private func RenderHistoryText(encoded: String) -> String {
+        let parts: array<String> = StrSplit(encoded, "|");
+        if ArraySize(parts) == 0 {
+            return encoded;
+        }
+        let key: String = parts[0];
+        let args: array<String> = [];
+        let i: Int32 = 1;
+        while i < ArraySize(parts) {
+            ArrayPush(args, parts[i]);
+            i += 1;
+        }
+        return this.Substitute(this.T(key), args);
+    }
+
+    // TAB  GANGS | TERRITORY | ARSENAL, one line - BOUNTIES moved to the title row (CreateHeader's
+    // navTitleKey/navTarget) since hanging a 4th item off a 2nd line here read as orphaned.
     private func CreateViewSwitch(root: ref<inkCompoundWidget>) {
-        let panel: ref<inkHorizontalPanel> = new inkHorizontalPanel();
-        panel.SetName(n"view_switch");
-        panel.SetAnchor(inkEAnchor.TopLeft);
-        panel.SetMargin(new inkMargin(120.0, 258.0, 0.0, 0.0));
-        panel.SetFitToContent(true);
-        panel.Reparent(root);
+        let outer: ref<inkVerticalPanel> = new inkVerticalPanel();
+        outer.SetName(n"view_switch");
+        outer.SetAnchor(inkEAnchor.TopLeft);
+        outer.SetMargin(new inkMargin(120.0, 242.0, 0.0, 0.0));
+        outer.SetFitToContent(true);
+        outer.Reparent(root);
+
+        let row1: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        row1.SetFitToContent(true);
+        row1.Reparent(outer);
 
         let key: ref<inkCompoundWidget> = this.NewTag("TAB", 22, this.Cyan());
+        key.SetVAlign(inkEVerticalAlign.Center);
         key.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
-        key.Reparent(panel);
+        key.Reparent(row1);
 
         let gangs: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuViewGangs")), 32, this.Grey(), n"Bold");
         gangs.SetVAlign(inkEVerticalAlign.Center);
         gangs.SetInteractive(true);
         gangs.RegisterToCallback(n"OnRelease", this, n"OnGRViewGangsClick");
-        gangs.Reparent(panel);
+        gangs.Reparent(row1);
         this.m_viewGangs = gangs;
 
         let sep: ref<inkText> = this.NewText("  |  ", 32, this.Dim(), n"Medium");
         sep.SetVAlign(inkEVerticalAlign.Center);
-        sep.Reparent(panel);
+        sep.Reparent(row1);
 
         let territory: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuViewTerritory")), 32, this.Grey(), n"Bold");
         territory.SetVAlign(inkEVerticalAlign.Center);
         territory.SetInteractive(true);
         territory.RegisterToCallback(n"OnRelease", this, n"OnGRViewTerritoryClick");
-        territory.Reparent(panel);
+        territory.Reparent(row1);
         this.m_viewTerritory = territory;
 
         let sep2: ref<inkText> = this.NewText("  |  ", 32, this.Dim(), n"Medium");
         sep2.SetVAlign(inkEVerticalAlign.Center);
-        sep2.Reparent(panel);
+        sep2.Reparent(row1);
 
         let arsenal: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuViewArsenal")), 32, this.Grey(), n"Bold");
         arsenal.SetVAlign(inkEVerticalAlign.Center);
         arsenal.SetInteractive(true);
         arsenal.RegisterToCallback(n"OnRelease", this, n"OnGRViewArsenalClick");
-        arsenal.Reparent(panel);
+        arsenal.Reparent(row1);
         this.m_viewArsenal = arsenal;
+    }
 
-        if GRHasHistory() {
-            let sep3: ref<inkText> = this.NewText("  |  ", 32, this.Dim(), n"Medium");
-            sep3.SetVAlign(inkEVerticalAlign.Center);
-            sep3.Reparent(panel);
-
-            let history: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuViewHistory")), 32, this.Grey(), n"Bold");
-            history.SetVAlign(inkEVerticalAlign.Center);
-            history.SetInteractive(true);
-            history.RegisterToCallback(n"OnRelease", this, n"OnGRViewHistoryClick");
-            history.Reparent(panel);
+    // Opens the OTHER top-level GangRetaliation menu scenario (NEMESES <-> BOUNTY BOARD) from wherever
+    // we are right now, the same way the vanilla JOURNAL/character-menu buttons do (GRAddBountyButton/
+    // GRAddNemesisButton) - a SelectMenuRequest naming a MenuItemController whose MenuData.fullscreenName
+    // is the target, queued up to MenuScenario_HubMenu's own OnOpenMenu handler (wrapped below). Passing
+    // focusNemesisId (>= 0) also stashes which Nemesis's bounty to auto-select once InitBounty opens
+    // (see RequestBountyFocus/ConsumeBountyFocus on GRMenuData), for the detail-panel badge's own click.
+    // m_navMenuItem keeps the holder alive past this function's scope in case QueueEvent is deferred.
+    private func OpenGRMenu(target: CName, focusNemesisId: Int32) {
+        let gi: GameInstance = this.GetPlayerControlledObject().GetGame();
+        if focusNemesisId >= 0 && IsDefined(this.m_data) {
+            this.m_data.RequestBountyFocus(focusNemesisId);
         }
+        let data: MenuData = Equals(target, n"gangretaliation_bounty_menu") ? GRBountyMenuItem(gi) : GRNemesisMenuItem(gi);
+        let holder: ref<MenuItemController> = new MenuItemController();
+        holder.Init(data);
+        this.m_navMenuItem = holder;
+        let request: ref<SelectMenuRequest> = new SelectMenuRequest();
+        request.m_eventData = holder;
+        this.QueueEvent(request);
+        this.PlaySound(n"Button", n"OnPress");
+        GRLog("Menu: navegando a " + NameToString(target));
+    }
+
+    protected cb func OnGRHeaderNavClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") {
+            return false;
+        }
+        this.OpenGRMenu(this.m_headerNavTarget, -1);
+        return true;
+    }
+
+    protected cb func OnGRBountyBadgeClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") || this.m_detailBountyNemesisId < 0 {
+            return false;
+        }
+        this.OpenGRMenu(n"gangretaliation_bounty_menu", this.m_detailBountyNemesisId);
+        return true;
     }
 
     private func CreateTerritory(root: ref<inkCompoundWidget>) {
@@ -2011,30 +2627,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     }
 
     private func ToggleView() {
-        if this.m_view == 2 && GRHasHistory() && IsDefined(this.m_grDispatcher) {
-            this.OpenHistory();
-            return;
-        }
         this.SetView((this.m_view + 1) % 3);
-    }
-
-    private func OpenHistory() {
-        if this.m_fOpen {
-            return;
-        }
-        if !IsDefined(this.m_grDispatcher) {
-            GRLog("Menu: no se puede abrir Gang Retaliation History (sin dispatcher del hub)");
-            return;
-        }
-        this.PlaySound(n"Button", n"OnPress");
-        GRLog("Menu: abriendo Gang Retaliation History (evento OnGangRetaliationOpenHistory)");
-        this.m_grDispatcher.SpawnEvent(n"OnGangRetaliationOpenHistory");
-    }
-
-    protected cb func OnGRViewHistoryClick(evt: ref<inkPointerEvent>) -> Bool {
-        if evt.IsAction(n"click") {
-            this.OpenHistory();
-        }
     }
 
     protected cb func OnGRViewGangsClick(evt: ref<inkPointerEvent>) -> Bool {
@@ -2438,13 +3031,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         }
         i = 0;
         while i < Min(ArraySize(texts), 5) {
-            let line: ref<inkHorizontalPanel> = new inkHorizontalPanel();
-            line.SetMargin(new inkMargin(0.0, 0.0, 0.0, 10.0));
-            line.Reparent(panel);
-            let dayText: ref<inkText> = this.NewText(days[i], 22, this.Grey(), n"Bold");
-            dayText.SetMargin(new inkMargin(0.0, 4.0, 18.0, 0.0));
-            dayText.Reparent(line);
-            this.NewWrappedText(texts[i], 28, this.Light(), 740.0).Reparent(line);
+            this.AddRumorRow(panel, days[i], texts[i], width);
             i += 1;
         }
     }
@@ -3607,7 +4194,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.m_bSel = -1;
         let root: ref<inkCompoundWidget> = this.GetRootCompoundWidget();
         this.CreateBackground(root);
-        this.CreateHeader(root, "GR-BountyTitle");
+        this.CreateHeader(root, "GR-BountyTitle", "GR-MenuTitle", n"gangretaliation_nemesis_menu");
 
         let board: ref<inkCanvas> = new inkCanvas();
         board.SetName(n"bounty_board");
@@ -3621,6 +4208,24 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnGRGlobalInput");
         this.FillBounty();
         GRLog("Menu: tablero de recompensas abierto (" + IntToString(ArraySize(this.m_bContracts)) + " contratos)");
+
+        // Landed here from a Nemesis's bounty badge click (OpenGRMenu/RequestBountyFocus) - jump straight
+        // to that contract's detail instead of leaving nothing selected.
+        let focusId: Int32 = IsDefined(this.m_data) ? this.m_data.ConsumeBountyFocus() : -1;
+        if focusId >= 0 {
+            for c in this.m_bContracts {
+                if c.nemesisId == focusId && GRBounties.IsOpenState(c.state) {
+                    this.m_bSel = c.index;
+                    let j: Int32 = 0;
+                    while j < ArraySize(this.m_bFrames) && j < ArraySize(this.m_bCards) {
+                        this.StyleBountyFrame(this.m_bFrames[j], this.ContractAt(this.m_bCards[j]), this.m_bCards[j] == this.m_bSel);
+                        j += 1;
+                    }
+                    this.FillBountyDetail(c);
+                    break;
+                }
+            }
+        }
     }
 
     private func CreateBountyViewSwitch(root: ref<inkCompoundWidget>) {
@@ -4581,25 +5186,9 @@ protected cb func OnGangRetaliationApiOpenView(userData: ref<IScriptable>) -> Bo
     return this.OnOpenMenu(n"gangretaliation_nemesis_menu", null);
 }
 
-@if(ModuleExists("GangRetaliationHistory"))
-@addMethod(MenuScenario_HubMenu)
-protected cb func OnGangRetaliationOpenHistory(userData: ref<IScriptable>) -> Bool {
-    return this.OnOpenMenu(n"gangretaliationhistory_history_menu", null);
-}
-
 @addMethod(gameuiMenuGameController)
 public final func GangRetaliationGetDispatcher() -> wref<inkMenuEventDispatcher> {
     return this.m_baseEventDispatcher;
-}
-
-@if(ModuleExists("GangRetaliationHistory"))
-public func GRHasHistory() -> Bool {
-    return true;
-}
-
-@if(!ModuleExists("GangRetaliationHistory"))
-public func GRHasHistory() -> Bool {
-    return false;
 }
 
 @if(ModuleExists("DarkFuture.UI"))
