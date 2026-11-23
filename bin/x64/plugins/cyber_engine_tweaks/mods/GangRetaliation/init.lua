@@ -1,4 +1,5 @@
 local Store = require("modules/store")
+local History = require("modules/history")
 local Names = require("modules/names")
 local Ambush = require("modules/ambush")
 local Traits = require("modules/traits")
@@ -133,18 +134,31 @@ end
 
 -- Fires the one message a deferred knockout promotion ends up showing, once processPendingReveals()
 -- decides it's time (see deferOrAnnounceKnockout).
-local function announceKnockout(label, limbsMissing, again)
+local function announceKnockout(n, limbsMissing, again)
+    local label = labelOf(n)
     if again then
         if limbsMissing then
-            notify(string.format(text("GR-MsgAgainKnockedOutDismembered", "%s came to again with new chrome. They won't forget this."), label))
+            local key = "GR-MsgAgainKnockedOutDismembered"
+            local msg = string.format(text(key, "%s came to again with new chrome. They won't forget this."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         else
-            notify(string.format(text("GR-MsgAgainKnockedOut", "%s came to again, vowing revenge."), label))
+            local key = "GR-MsgAgainKnockedOut"
+            local msg = string.format(text(key, "%s came to again, vowing revenge."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         end
     else
         if limbsMissing then
-            notify(string.format(text("GR-MsgKnockedOutDismembered", "%s awoke with new chrome. They won't forget this."), label))
+            local key = "GR-MsgKnockedOutDismembered"
+            local msg = string.format(text(key, "%s awoke with new chrome. They won't forget this."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         else
-            notify(string.format(text("GR-MsgKnockedOut", "%s upgraded their chrome, vowing revenge."), label))
+            local key = "GR-MsgKnockedOut"
+            local msg = string.format(text(key, "%s upgraded their chrome, vowing revenge."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         end
     end
 end
@@ -189,9 +203,15 @@ local function updateNemesis(evt)
     local label = labelOf(n)
     if evt.origin == "fled" or evt.origin == "fleddismembered" then
         if evt.limbsMissing then
-            notify(string.format(text("GR-MsgAgainFledDismembered", "%s ran from you again, injured. They will come back for you."), label))
+            local key = "GR-MsgAgainFledDismembered"
+            local msg = string.format(text(key, "%s ran from you again, injured. They will come back for you."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         else
-            notify(string.format(text("GR-MsgAgainFled", "%s ran from you again. They will come back for you."), label))
+            local key = "GR-MsgAgainFled"
+            local msg = string.format(text(key, "%s ran from you again. They will come back for you."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         end
     elseif evt.origin == "knockedout" then
         -- Own-spawns are also tracked by GRSpawner.CheckNeutralized(), which records this same
@@ -202,9 +222,15 @@ local function updateNemesis(evt)
         end
     else
         if evt.limbsMissing then
-            notify(string.format(text("GR-MsgAgainEscapedDismembered", "%s escaped you again. They are injured but getting stronger."), label))
+            local key = "GR-MsgAgainEscapedDismembered"
+            local msg = string.format(text(key, "%s escaped you again. They are injured but getting stronger."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         else
-            notify(string.format(text("GR-MsgAgainEscaped", "%s escaped you again. They are getting stronger."), label))
+            local key = "GR-MsgAgainEscaped"
+            local msg = string.format(text(key, "%s escaped you again. They are getting stronger."), label)
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { label })
         end
     end
     Store.dirty = true
@@ -260,9 +286,15 @@ local function createNemesis(evt)
     local label = Names.display(nemesis, lang()) .. " (" .. Names.gangLabel(gang) .. ")"
     if evt.origin == "fled" or evt.origin == "fleddismembered" then
         if evt.limbsMissing then
-            notify(string.format(text("GR-MsgFledDismembered", "%s ran away injured. They will come back for you."), label))
+            local key = "GR-MsgFledDismembered"
+            local msg = string.format(text(key, "%s ran away injured. They will come back for you."), label)
+            notify(msg)
+            History.record(key, { gang }, { nemesis.name }, { label })
         else
-            notify(string.format(text("GR-MsgFled", "%s ran away. They will come back for you."), label))
+            local key = "GR-MsgFled"
+            local msg = string.format(text(key, "%s ran away. They will come back for you."), label)
+            notify(msg)
+            History.record(key, { gang }, { nemesis.name }, { label })
         end
     elseif evt.origin == "knockedout" then
         -- See updateNemesis: own-spawns let processDeaths() be the sole announcer.
@@ -271,9 +303,15 @@ local function createNemesis(evt)
         end
     else
         if evt.limbsMissing then
-            notify(string.format(text("GR-MsgEscapedDismembered", "%s got away missing a limb. They will remember you."), label))
+            local key = "GR-MsgEscapedDismembered"
+            local msg = string.format(text(key, "%s got away missing a limb. They will remember you."), label)
+            notify(msg)
+            History.record(key, { gang }, { nemesis.name }, { label })
         else
-            notify(string.format(text("GR-MsgEscaped", "%s got away wounded. They will remember you."), label))
+            local key = "GR-MsgEscaped"
+            local msg = string.format(text(key, "%s got away wounded. They will remember you."), label)
+            notify(msg)
+            History.record(key, { gang }, { nemesis.name }, { label })
         end
     end
 end
@@ -304,7 +342,7 @@ local function processPendingReveals()
     local dirty = false
     for _, n in ipairs(campaign.nemeses) do
         if n.pendingReveal and n.status ~= "dead" and today >= (n.revealDay or 0) then
-            announceKnockout(labelOf(n), n.pendingLimbsMissing, n.pendingAgain)
+            announceKnockout(n, n.pendingLimbsMissing, n.pendingAgain)
             n.pendingReveal = nil
             n.revealDay = nil
             n.pendingLimbsMissing = nil
@@ -324,7 +362,12 @@ local function giveBossWeapon(n, force)
     local escapes = (n.escapes or 0) + ((n.origin == "escaped" or n.origin == "fled" or n.origin == "escapeddismembered" or n.origin == "fleddismembered") and 1 or 0)
     rewards:AddName(n.id, Names.display(n, lang()))
     local weapon = rewards:GiveBossWeapon(n.id, n.gang, Traits.csv(n), escapes, force)
-    if weapon and weapon ~= "" then notify(string.format(text("GR-MsgBossWeapon", "You took %s."), weapon)) end
+    if weapon and weapon ~= "" then
+        local key = "GR-MsgBossWeapon"
+        local msg = string.format(text(key, "You took %s."), weapon)
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { weapon })
+    end
     return weapon or ""
 end
 
@@ -381,15 +424,30 @@ local function processDeaths()
                 })
                 debugLog(string.format("%s muere (%s, %s): %s", labelOf(n), kind, cause, returns and ("vuelve el dia " .. string.format("%.1f", n.returnDay)) or "no vuelve"))
                 if n.diedBy == "police" then
-                    notify(string.format(text("GR-MsgNemesisDeadPolice", "Rumor: the NCPD took down %s."), labelOf(n)))
+                    local key = "GR-MsgNemesisDeadPolice"
+                    local msg = string.format(text(key, "Rumor: the NCPD took down %s."), labelOf(n))
+                    notify(msg)
+                    History.record(key, { n.gang }, { n.name }, { labelOf(n) })
                 elseif n.diedBy == "gang" then
-                    notify(string.format(text("GR-MsgNemesisDeadGang", "Rumor: %s was taken down by the %s."), labelOf(n), Names.gangLabel(n.diedByGang)))
+                    local key = "GR-MsgNemesisDeadGang"
+                    local msg = string.format(text(key, "Rumor: %s was taken down by the %s."), labelOf(n), Names.gangLabel(n.diedByGang))
+                    notify(msg)
+                    History.record(key, { n.gang, n.diedByGang }, { n.name }, { labelOf(n), Names.gangLabel(n.diedByGang) })
                 elseif n.diedBy == "other" then
-                    notify(string.format(text("GR-MsgNemesisDeadOther", "%s is dead. Nobody knows who did it."), labelOf(n)))
+                    local key = "GR-MsgNemesisDeadOther"
+                    local msg = string.format(text(key, "%s is dead. Nobody knows who did it."), labelOf(n))
+                    notify(msg)
+                    History.record(key, { n.gang }, { n.name }, { labelOf(n) })
                 elseif kind == "confirmed" then
-                    notify(string.format(text("GR-MsgNemesisConfirmed", "%s is dead. For good this time."), labelOf(n)))
+                    local key = "GR-MsgNemesisConfirmed"
+                    local msg = string.format(text(key, "%s is dead. For good this time."), labelOf(n))
+                    notify(msg)
+                    History.record(key, { n.gang }, { n.name }, { labelOf(n) })
                 else
-                    notify(string.format(text("GR-MsgNemesisDead", "%s is dead... for now."), labelOf(n)))
+                    local key = "GR-MsgNemesisDead"
+                    local msg = string.format(text(key, "%s is dead... for now."), labelOf(n))
+                    notify(msg)
+                    History.record(key, { n.gang }, { n.name }, { labelOf(n) })
                 end
                 Hierarchy.onDeath(Store.ensureCampaign(GR.campaignId), n, gameDay())
                 if (n.rank or 1) == Hierarchy.BOSS and n.diedBy == "v" then
@@ -397,7 +455,10 @@ local function processDeaths()
                     if not okW then print("[GangRetaliation] Error en arma de Jefe: " .. tostring(errW)) end
                 end
                 if (n.rank or 1) == Hierarchy.BOSS then
-                    notify(string.format(text("GR-MsgBossDown", "The %s lost their boss. Someone will want the throne..."), Names.gangLabel(n.gang)))
+                    local key = "GR-MsgBossDown"
+                    local msg = string.format(text(key, "The %s lost their boss. Someone will want the throne..."), Names.gangLabel(n.gang))
+                    notify(msg)
+                    History.record(key, { n.gang }, {}, { Names.gangLabel(n.gang) })
                 end
             end
             spawner:RemoveDeathAt(i)
@@ -436,7 +497,12 @@ local function launchAmbush(n, forceVehicle)
     n.ambushes = (n.ambushes or 0) + 1
     GR.encounterId = n.id
     Store.dirty = true
-    notify(string.format(text("GR-MsgAmbush", "Ambush! %s found you."), labelOf(n)))
+    do
+        local key = "GR-MsgAmbush"
+        local msg = string.format(text(key, "Ambush! %s found you."), labelOf(n))
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { labelOf(n) })
+    end
     return "ambush #" .. n.id
 end
 
@@ -576,7 +642,12 @@ local function tryGig(force)
                 n.gigs = (n.gigs or 0) + 1
                 GR.encounterId = n.id
                 Store.dirty = true
-                notify(string.format(text("GR-MsgGig", "%s heard you were coming and brought backup!"), labelOf(n)))
+                do
+                    local key = "GR-MsgGig"
+                    local msg = string.format(text(key, "%s heard you were coming and brought backup!"), labelOf(n))
+                    notify(msg)
+                    History.record(key, { n.gang }, { n.name }, { labelOf(n) })
+                end
                 return "gig reinforcement #" .. n.id
             end
             debugLog(string.format("Gig %s / %s: %s", gigId, gang, n and ("tirada " .. roll .. " fallida") or "sin Nemesis vivo"))
@@ -617,9 +688,15 @@ local function tryExternalSquad()
     GR.encounterId = n.id
     Store.dirty = true
     if source == "TWR" then
-        notify(string.format(text("GR-MsgSquadTWR", "%s is leading the vengeance squad!"), labelOf(n)))
+        local key = "GR-MsgSquadTWR"
+        local msg = string.format(text(key, "%s is leading the vengeance squad!"), labelOf(n))
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { labelOf(n) })
     else
-        notify(string.format(text("GR-MsgSquadDD", "%s came with the crew hitting your business!"), labelOf(n)))
+        local key = "GR-MsgSquadDD"
+        local msg = string.format(text(key, "%s came with the crew hitting your business!"), labelOf(n))
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { labelOf(n) })
     end
     return squad .. ": Nemesis #" .. n.id
 end
@@ -658,35 +735,71 @@ local function hierarchyEvent(kind, a, b)
     local nameB = b and Names.display(b, lang()) or ""
     local rankA = rankLabel(a.rank, a.gender)
     if kind == "promoted" then
-        notify(string.format(text("GR-MsgPromoted", "%s rose to %s of the %s."), nameA, rankA, gang))
+        local key = "GR-MsgPromoted"
+        local msg = string.format(text(key, "%s rose to %s of the %s."), nameA, rankA, gang)
+        notify(msg)
+        History.record(key, { a.gang }, { a.name }, { nameA, rankA, gang })
     elseif kind == "returned" then
         if a.origin == "returnedknockout" then
-            notify(string.format(text("GR-MsgReturnedKnockedOut", "%s was recovered and has been upgraded with chrome. Watch your back."), nameA .. " (" .. gang .. ")"))
+            local key = "GR-MsgReturnedKnockedOut"
+            local msg = string.format(text(key, "%s was recovered and has been upgraded with chrome. Watch your back."), nameA .. " (" .. gang .. ")")
+            notify(msg)
+            History.record(key, { a.gang }, { a.name }, { nameA .. " (" .. gang .. ")" })
         else
-            notify(string.format(text("GR-MsgReturned", "%s is back from the dead, rebuilt with chrome. They are coming for you."), nameA .. " (" .. gang .. ")"))
+            local key = "GR-MsgReturned"
+            local msg = string.format(text(key, "%s is back from the dead, rebuilt with chrome. They are coming for you."), nameA .. " (" .. gang .. ")")
+            notify(msg)
+            History.record(key, { a.gang }, { a.name }, { nameA .. " (" .. gang .. ")" })
         end
         local phone = getSystem("GangRetaliation.GRPhone")
         if phone then
             phone:SendReturn(nameA, text("GR-SmsReturn-" .. math.random(3), "..."))
         end
     elseif kind == "recruited" then
-        notify(string.format(text("GR-MsgRecruited", "New face in the %s: %s, %s."), gang, nameA, rankA))
+        local key = "GR-MsgRecruited"
+        local msg = string.format(text(key, "New face in the %s: %s, %s."), gang, nameA, rankA)
+        notify(msg)
+        History.record(key, { a.gang }, { a.name }, { gang, nameA, rankA })
     elseif kind == "feudKill" then
-        notify(string.format(text("GR-MsgFeudKill", "Rumor: %s killed %s and is now %s of the %s."), nameA, nameB, rankA, gang))
+        local key = "GR-MsgFeudKill"
+        local msg = string.format(text(key, "Rumor: %s killed %s and is now %s of the %s."), nameA, nameB, rankA, gang)
+        notify(msg)
+        History.record(key, { a.gang }, { a.name, b.name }, { nameA, nameB, rankA, gang })
     elseif kind == "feudDemote" then
-        notify(string.format(text("GR-MsgFeudDemote", "Rumor: %s overthrew %s and is now %s of the %s."), nameA, nameB, rankA, gang))
+        local key = "GR-MsgFeudDemote"
+        local msg = string.format(text(key, "Rumor: %s overthrew %s and is now %s of the %s."), nameA, nameB, rankA, gang)
+        notify(msg)
+        History.record(key, { a.gang }, { a.name, b.name }, { nameA, nameB, rankA, gang })
     elseif kind == "feudFail" then
-        notify(string.format(text("GR-MsgFeudFail", "Rumor: %s put %s in their place."), nameA, nameB))
+        local key = "GR-MsgFeudFail"
+        local msg = string.format(text(key, "Rumor: %s put %s in their place."), nameA, nameB)
+        notify(msg)
+        History.record(key, { a.gang }, { a.name, b.name }, { nameA, nameB })
     elseif kind == "policeKill" then
-        notify(string.format(text("GR-MsgNemesisDeadPolice", "Rumor: the NCPD took down %s."), nameA .. " (" .. gang .. ")"))
+        local key = "GR-MsgNemesisDeadPolice"
+        local msg = string.format(text(key, "Rumor: the NCPD took down %s."), nameA .. " (" .. gang .. ")")
+        notify(msg)
+        History.record(key, { a.gang }, { a.name }, { nameA .. " (" .. gang .. ")" })
     elseif kind == "policeArrest" then
-        notify(string.format(text("GR-MsgPoliceArrest", "Rumor: the NCPD arrested %s. They will be out in a few days."), nameA .. " (" .. gang .. ")"))
+        local key = "GR-MsgPoliceArrest"
+        local msg = string.format(text(key, "Rumor: the NCPD arrested %s. They will be out in a few days."), nameA .. " (" .. gang .. ")")
+        notify(msg)
+        History.record(key, { a.gang }, { a.name }, { nameA .. " (" .. gang .. ")" })
     elseif kind == "policeEscape" then
-        notify(string.format(text("GR-MsgPoliceEscape", "Rumor: %s shot their way out of an NCPD raid."), nameA .. " (" .. gang .. ")"))
+        local key = "GR-MsgPoliceEscape"
+        local msg = string.format(text(key, "Rumor: %s shot their way out of an NCPD raid."), nameA .. " (" .. gang .. ")")
+        notify(msg)
+        History.record(key, { a.gang }, { a.name }, { nameA .. " (" .. gang .. ")" })
     elseif kind == "released" then
-        notify(string.format(text("GR-MsgReleased", "%s is back on the street."), nameA .. " (" .. gang .. ")"))
+        local key = "GR-MsgReleased"
+        local msg = string.format(text(key, "%s is back on the street."), nameA .. " (" .. gang .. ")")
+        notify(msg)
+        History.record(key, { a.gang }, { a.name }, { nameA .. " (" .. gang .. ")" })
     elseif kind == "feudFailDead" then
-        notify(string.format(text("GR-MsgFeudFailDead", "Rumor: %s challenged %s and paid with their life."), nameB, nameA))
+        local key = "GR-MsgFeudFailDead"
+        local msg = string.format(text(key, "Rumor: %s challenged %s and paid with their life."), nameB, nameA)
+        notify(msg)
+        History.record(key, { a.gang }, { a.name, b.name }, { nameB, nameA })
     end
     Store.dirty = true
 end
@@ -698,15 +811,23 @@ end
 
 local function warLine(kind, a, d, place)
     if kind == "warStart" then
-        return string.format(text("GR-MsgWarStart", "Rumor: the %s are attacking the %s in %s."), Names.gangLabel(a), Names.gangLabel(d), place)
+        local msgKey = "GR-MsgWarStart"
+        local args = { Names.gangLabel(a), Names.gangLabel(d), place }
+        return string.format(text(msgKey, "Rumor: the %s are attacking the %s in %s."), table.unpack(args)), msgKey, args
     elseif kind == "warWon" then
-        return string.format(text("GR-MsgWarWon", "The %s took %s from the %s."), Names.gangLabel(a), place, Names.gangLabel(d))
+        local msgKey = "GR-MsgWarWon"
+        local args = { Names.gangLabel(a), place, Names.gangLabel(d) }
+        return string.format(text(msgKey, "The %s took %s from the %s."), table.unpack(args)), msgKey, args
     end
-    return string.format(text("GR-MsgWarHeld", "The %s held %s against the %s."), Names.gangLabel(a), place, Names.gangLabel(d))
+    local msgKey = "GR-MsgWarHeld"
+    local args = { Names.gangLabel(a), place, Names.gangLabel(d) }
+    return string.format(text(msgKey, "The %s held %s against the %s."), table.unpack(args)), msgKey, args
 end
 
 local function warEvent(kind, a, d, key)
-    notify(warLine(kind, a, d, districtLabel(Store.campaign(GR.campaignId), key)))
+    local msg, msgKey, args = warLine(kind, a, d, districtLabel(Store.campaign(GR.campaignId), key))
+    notify(msg)
+    History.record(msgKey, { a, d }, {}, args)
     Store.dirty = true
 end
 
@@ -773,7 +894,12 @@ local function trySkirmish(force)
     if not ra or not rd then return "no records for " .. tostring(a) .. "/" .. tostring(d) end
     if not warSys:Start(ra, rd) then return "spawn failed: " .. tostring(warSys:GetLastError()) end
     GR.lastSkirmish = os.time()
-    notify(string.format(text("GR-MsgSkirmish", "The %s and the %s are shooting it out nearby!"), Names.gangLabel(a), Names.gangLabel(d)))
+    do
+        local key = "GR-MsgSkirmish"
+        local msg = string.format(text(key, "The %s and the %s are shooting it out nearby!"), Names.gangLabel(a), Names.gangLabel(d))
+        notify(msg)
+        History.record(key, { a, d }, {}, { Names.gangLabel(a), Names.gangLabel(d) })
+    end
     return "skirmish " .. a .. " vs " .. d
 end
 
@@ -814,9 +940,15 @@ local function tryRaid(force)
     GR.raidId = n.id
     GR.raidForce = raidForce
     if raidForce == "Barghest" then
-        notify(string.format(text("GR-MsgRaidBarghest", "Barghest is raiding %s nearby!"), labelOf(n)))
+        local key = "GR-MsgRaidBarghest"
+        local msg = string.format(text(key, "Barghest is raiding %s nearby!"), labelOf(n))
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { labelOf(n) })
     else
-        notify(string.format(text("GR-MsgRaid", "The NCPD is raiding %s nearby!"), labelOf(n)))
+        local key = "GR-MsgRaid"
+        local msg = string.format(text(key, "The NCPD is raiding %s nearby!"), labelOf(n))
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { labelOf(n) })
     end
     return "raid #" .. n.id .. " (" .. raidForce .. ")"
 end
@@ -851,9 +983,15 @@ local function checkRaid()
         Hierarchy.addRenown(n, 2)
         Store.dirty = true
         if barghest then
-            notify(string.format(text("GR-MsgBarghestEscape", "Rumor: %s shot their way out of a Barghest raid."), labelOf(n)))
+            local key = "GR-MsgBarghestEscape"
+            local msg = string.format(text(key, "Rumor: %s shot their way out of a Barghest raid."), labelOf(n))
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { labelOf(n) })
         else
-            notify(string.format(text("GR-MsgPoliceEscape", "Rumor: %s shot their way out of an NCPD raid."), labelOf(n)))
+            local key = "GR-MsgPoliceEscape"
+            local msg = string.format(text(key, "Rumor: %s shot their way out of an NCPD raid."), labelOf(n))
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { labelOf(n) })
         end
     end
 end
@@ -903,7 +1041,10 @@ local function strongholdEvents()
     while ev ~= "" do
         local kind, gang = string.match(ev, "^(%a+):(.+)$")
         if kind == "cleared" then
-            notify(string.format(text("GR-MsgStrongholdCleared", "The %s stronghold has fallen."), Names.gangLabel(gang)))
+            local msgKey = "GR-MsgStrongholdCleared"
+            local msg = string.format(text(msgKey, "The %s stronghold has fallen."), Names.gangLabel(gang))
+            notify(msg)
+            History.record(msgKey, { gang }, {}, { Names.gangLabel(gang) })
         end
         ev = sys:TakeEvent()
     end
@@ -1028,7 +1169,12 @@ local function pushTerritory(sys, campaign)
         sys:AddGangStrength(r.gang, Names.gangLabel(r.gang), r.value, note)
     end
     for _, m in ipairs(w.rumors or {}) do
-        sys:AddRumor(string.format(text("GR-MenuDay", "DAY %d"), m.day), warLine(m.kind, m.a, m.d, districtLabel(campaign, m.district)))
+        -- warLine returns (msg, msgKey, args) since the History data-recording redesign - only msg is
+        -- wanted here, so it's pulled into a local first instead of passing the call straight through
+        -- (as the last argument, all 3 return values would splice into AddRumor's call, which only
+        -- takes 2 parameters and errored on every tick until this was caught).
+        local msg = warLine(m.kind, m.a, m.d, districtLabel(campaign, m.district))
+        sys:AddRumor(string.format(text("GR-MenuDay", "DAY %d"), m.day), msg)
     end
 end
 
@@ -1107,7 +1253,10 @@ local function processReveals()
                 t.revealed = true
                 Store.dirty = true
                 local weak = Traits.isWeakness(t.key)
-                notify(string.format(text(weak and "GR-MsgIntelWeak" or "GR-MsgIntelStrong", weak and "Intel on %s - weakness: %s" or "Intel on %s - strength: %s"), fullName(pick.n), traitName(t.key)))
+                local msgKey = weak and "GR-MsgIntelWeak" or "GR-MsgIntelStrong"
+                local msg = string.format(text(msgKey, weak and "Intel on %s - weakness: %s" or "Intel on %s - strength: %s"), fullName(pick.n), traitName(t.key))
+                notify(msg)
+                History.record(msgKey, { pick.n.gang }, { pick.n.name }, { fullName(pick.n), traitName(t.key) })
                 print(string.format("[GangRetaliation] Intel: shard revela rasgo %s de Nemesis #%s (%s, %s)", t.key, tostring(pick.n.id), gang, ({ "Soldado", "Teniente", "Jefe" })[best] or "?"))
             else
                 print("[GangRetaliation] Intel: shard sin rasgos por revelar (" .. gang .. ")")
@@ -1119,12 +1268,17 @@ local function processReveals()
                     local none = text("GR-UiNone", "none")
                     local strong = Traits.list(n, traitName, false, true)
                     local weak = Traits.list(n, traitName, true, true)
-                    notify(string.format(text("GR-MsgScan", "%s - Strengths: %s. Weaknesses: %s."), Names.display(n, lang()), strong ~= "" and strong or none, weak ~= "" and weak or none))
+                    local msgKey = "GR-MsgScan"
+                    local msg = string.format(text(msgKey, "%s - Strengths: %s. Weaknesses: %s."), Names.display(n, lang()), strong ~= "" and strong or none, weak ~= "" and weak or none)
+                    notify(msg)
+                    History.record(msgKey, { n.gang }, { n.name }, { Names.display(n, lang()), strong ~= "" and strong or none, weak ~= "" and weak or none })
                 end
             elseif Traits.reveal(n, what) then
                 local key = Traits.isWeakness(what) and "GR-MsgTraitWeak" or "GR-MsgTraitStrong"
                 local fallback = Traits.isWeakness(what) and "Weakness found - %s: %s" or "Strength found - %s: %s"
-                notify(string.format(text(key, fallback), Names.display(n, lang()), traitName(what)))
+                local msg = string.format(text(key, fallback), Names.display(n, lang()), traitName(what))
+                notify(msg)
+                History.record(key, { n.gang }, { n.name }, { Names.display(n, lang()), traitName(what) })
             end
             Store.dirty = true
         end
@@ -1222,6 +1376,7 @@ end
 registerForEvent("onInit", function()
     math.randomseed(os.time())
     Store.load()
+    History.init(getSystem, gameDay, appendDebugLogLine)
 
     local okObserve, errObserve = pcall(function()
         Observe("gameDismembermentComponent", "DoDismemberment", onDismemberment)
@@ -1274,6 +1429,13 @@ local function update(delta)
     if tick then
         GR.fleeTimer = 0
         prof("refreshCampaign", refreshCampaign)
+        History.onCampaignTick(GR.campaignId)
+        local settings = getSettings()
+        if settings and settings.clearHistoryLog then
+            local cleared = History.ClearCurrentCampaign()
+            settings:ClearHistoryLogReset()
+            debugLog(cleared and "Historial borrado (ajuste Clear Log)" or "Clear Log: no hay campana activa, nada que borrar")
+        end
     end
     if GR.campaignId == 0 then return end
     if (GR.warmup or 0) > 0 then

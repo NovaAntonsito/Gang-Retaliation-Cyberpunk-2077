@@ -1,6 +1,6 @@
 # Changelog - Gang Retaliation
 
-## [Unreleased]
+## [1.5.5] - 2026-11-22
 
 ### English
 
@@ -8,6 +8,8 @@
 - A decapitation that lands right after the kill, or on a Nemesis who is already down, now confirms the death for good: the Nemesis does not come back and the "For good this time" message shows. Thanks to **Aephiex** for finding the problem and writing the fix.
 - Boss weapons stored in your stash now show in the ARSENAL (marked IN THE STASH; open and close the stash once to register them). Take them out to use them in Augment.
 - Hunt zones no longer land underground: the hunt point is checked against the surface (a point with a floor or structure more than 6 m above it is discarded and another is picked; if the ground isn't loaded yet, it is checked again when you get within 200 m), and the pin and the target appear at surface level.
+- The GANG RETALIATION map filter checkbox now actually controls the bounty search-zone circle: it used to share a marker variant with a lot of unrelated game mappins, so (un)checking it did nothing to the circle, and unchecking every box could still leave other mods' pins hidden.
+- History and Gang History now list events newest first, with no redundant trailing "Now" line (the GANGS panel already shows the current day at the top).
 
 #### Changed
 - Contracts are paid on any takedown by you (knockout or kill). The old "make sure they don't come back" condition is gone. Boss contracts still need the Boss to fall inside their stronghold.
@@ -24,6 +26,8 @@
 - The scanner shows a Nemesis's traits in their own TRAITS section.
 - Every Nemesis who goes down, knocked out or killed, now carries an Intel Shard.
 - A rare surprise from Rogue: once in a while one of her contracts comes marked **SPECIAL**. Complete every optional objective on it and she has something for you.
+- **History merged into the GANGS screen.** The standalone Gang Retaliation History add-on's screen is replaced by two new sub-tabs on the GANGS detail panel: **History** (a selected Nemesis's own events) and **Gang History** (every event tagged to their whole gang). If you had the old add-on installed, its log is migrated into this mod automatically the first time you load with this version - nothing to do by hand.
+- **Clear Log** debug setting (Mod Settings, under Debug): permanently deletes the active campaign's history. Does not touch other campaigns' saved history.
 
 ### Español
 
@@ -31,6 +35,8 @@
 - Una decapitación que llega justo después de la muerte, o sobre un Némesis que ya está caído, ahora confirma la muerte para siempre: el Némesis no vuelve y sale el mensaje de que cayó para siempre. Gracias a **Aephiex** por encontrar el problema y escribir el arreglo.
 - Las armas de Jefe que guardas en el alijo ahora aparecen en el ARSENAL (marcadas EN EL ALIJO; abre y cierra el alijo una vez para registrarlas). Sácalas del alijo para usarlas en el Aumento.
 - Las zonas de caza ya no quedan bajo tierra: el punto de caza se comprueba contra la superficie (si encima hay un piso o una estructura a más de 6 m, se descarta y se elige otro; si el suelo todavía no cargó, se vuelve a comprobar cuando estés a menos de 200 m), y el pin y el objetivo aparecen a nivel de superficie.
+- La casilla del filtro de mapa GANG RETALIATION ahora sí controla el círculo de la zona de búsqueda de recompensas: antes compartía variante de marcador con muchísimos otros mappins ajenos al mod, así que (des)tildarla no le hacía nada al círculo, y destildar todas las casillas igual podía dejar ocultos pins de otros mods.
+- Historial e Historial de Banda ahora listan los eventos de más nuevo a más viejo, sin la línea final redundante "Now" (el panel de GANGS ya muestra el día actual arriba).
 
 #### Cambiado
 - Los contratos se cobran con cualquier derribo hecho por ti (noqueo o muerte). Se quitó la condición de "que no vuelva". Los contratos de Jefe siguen exigiendo que el Jefe caiga dentro de su guarida.
@@ -47,6 +53,8 @@
 - El escáner muestra los rasgos del Némesis en su propia sección RASGOS.
 - Todo Némesis que cae, noqueado o muerto, ahora lleva un Shard de intel.
 - Una rara sorpresa de Rogue: de vez en cuando uno de sus contratos viene marcado como **ESPECIAL**. Completa todos los opcionales y ella tiene algo para ti.
+- **Historial fusionado a la pantalla GANGS.** La pantalla del add-on independiente Gang Retaliation History se reemplaza por dos pestañas nuevas en el panel de detalle de GANGS: **Historial** (los eventos propios del Némesis seleccionado) y **Historial de Banda** (todo evento marcado con toda su banda). Si tenías el add-on viejo instalado, su registro se migra a este mod automáticamente la primera vez que cargues con esta versión - no hay que hacer nada a mano.
+- Ajuste de debug **Clear Log** (Ajustes del Mod, en Debug): borra permanentemente el historial de la campaña activa. No toca el historial guardado de otras campañas.
 
 ## [1.4.10] - 2026-11-19
 

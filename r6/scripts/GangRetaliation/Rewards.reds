@@ -3012,7 +3012,11 @@ public class GRBounties extends ScriptableSystem {
     private func AddCircle(system: ref<MappinSystem>, zone: ref<GRBountyZone>, id: Int32, cx: Float, cy: Float, cz: Float, radius: Float) {
         let data: MappinData;
         data.mappinType = this.m_zoneCustom ? t"Mappins.GRZoneCircleMappinDefinition" : t"Mappins.DeviceMappinDefinition";
-        data.variant = gamedataMappinVariant.GenericRoleVariant;
+        // Variante propia (WorldMap.GRZoneCircleVariant, intel.yaml), no gamedataMappinVariant.GenericRoleVariant: esa es
+        // compartida por muchisimos mappins del juego, y al compartirla el filtro del mapa grande (casilla GANG RETALIATION,
+        // WorldMap.GRStrongholdFilterGroup) terminaba enganchado a pins ajenos a este mod (tildar/destildar la casilla no
+        // hacia nada, destildar todo dejaba pins de otros sistemas ocultos). Arreglado 2026-11-21.
+        data.variant = gamedataMappinVariant.CPO_RemotePlayerVariant;
         data.active = true;
         let circle: ref<GRZoneCircleData> = new GRZoneCircleData();
         circle.nemesisId = id;

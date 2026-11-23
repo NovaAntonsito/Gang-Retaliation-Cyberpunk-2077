@@ -3,6 +3,7 @@
 *.zip
 __pycache__/
 build/stage/
+backups/
 
 # IDE (JetBrains): configuración local
 .idea/

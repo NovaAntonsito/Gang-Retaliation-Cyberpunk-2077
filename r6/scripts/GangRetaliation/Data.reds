@@ -1,11 +1,17 @@
-module GangRetaliationHistory
+module GangRetaliation
 
-// Holds the nemesis history events for the History screen.
-// The CET side (GangRetaliationHistory/init.lua) reads data/history.log, classifies and tags each
-// line, then pushes it here with Clear() + Add(). redscript can't read files, so this is the bridge.
+// Holds the nemesis history events shown in the GANGS detail panel's History/Gang History sub-tabs.
+// The CET side (init.lua) calls History.record(key, gangKeys, names, args) next to each notify() call
+// and pushes the event here with Clear() + Add() - no text parsing, the args are already real variables
+// at that point.
 //
 //   kind    short code: DEATH RAID ARREST RELEASED AMBUSH BACKUP ESCAPED PROMOTED NEWFACE FEUD
 //           VACUUM RETURNED TRAIT WAR TERRITORY STRONGHOLD WEAPON INTEL NEWS
+//   text    NOT a rendered sentence - "key|arg1|arg2|..." (the localization key, then its %s/%d
+//           substitution args in order, pipe-delimited). Menu.reds's RenderHistoryText() looks up the
+//           key's current-language template and substitutes the args fresh every time a history row is
+//           built, so a language switch mid-save changes how old entries read too (render at display
+//           time, not render-once-at-record-time).
 //   gangs   "|Scavengers|Maelstrom|"   gang KEYS the event involves (delimited so StrContains is exact)
 //   names   "|Yuri Zaitsev|Sergei Volkov|"   nemesis names the event involves
 public class GRChronData extends ScriptableSystem {
@@ -17,7 +23,7 @@ public class GRChronData extends ScriptableSystem {
     private let m_version: Int32;
 
     public static func Get(gi: GameInstance) -> ref<GRChronData> {
-        return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliationHistory.GRChronData") as GRChronData;
+        return GameInstance.GetScriptableSystemsContainer(gi).Get(n"GangRetaliation.GRChronData") as GRChronData;
     }
 
     public func Clear() {

@@ -55,7 +55,20 @@ Mappins.GRBountyZoneMappinDefinition:
 # (Mappins.DeviceMappinDefinition); esta propia queda para probar con DevZoneVanilla(false).
 # Con showInWorld: false el minimapa NUNCA tomaba el mappin (probado). Unica diferencia real con la del juego (ademas de la lista de
 # variantes, que la del juego tampoco incluye GenericRoleVariant y funciona): showInWorld. Se deja en true por si esa es la causa;
-# el icono del mundo 3D se oculta por codigo (GameplayMappinController.OnUpdate en Stronghold.reds). SIN PROBAR.
+# el icono del mundo 3D se oculta por codigo (GameplayMappinController.OnUpdate en Stronghold.reds).
+#
+# FIX 2026-11-21: originalmente possibleVariants listaba Mappins.GenericRoleVariant (compartida con muchisimos otros
+# mappins del juego, no una variante propia). Eso rompia el filtro del mapa grande: tildar/destildar la casilla GANG
+# RETALIATION no hacia nada, y destildar todas las casillas igual dejaba oculta una cantidad de pins ajenos a este mod -
+# el sistema nativo de filtros/coleccion de mappins agrupa por variante, asi que cualquier pin con GenericRoleVariant
+# quedaba enganchado a la logica de filtro de este grupo sin ser nuestro. Variante propia agregada abajo
+# (WorldMap.GRZoneCircleVariant, CPO_RemotePlayerVariant - otra variante del cooperativo cancelado sin uso en el juego
+# individual, mismo criterio que GRStrongholdVariant/GRBountyZoneVariant) para que el circulo no comparta variante con
+# nada mas.
+WorldMap.GRZoneCircleVariant:
+  $type: gamedataMappinVariant_Record
+  enumName: CPO_RemotePlayerVariant
+
 Mappins.GRZoneCircleMappinDefinition:
   $type: gamedataMappinDefinition_Record
   showInWorld: true
@@ -63,7 +76,7 @@ Mappins.GRZoneCircleMappinDefinition:
   showOnMinimap: true
   visibilityRange: 0
   possibleVariants:
-    - Mappins.GenericRoleVariant
+    - WorldMap.GRZoneCircleVariant
 
 Mappins.GRStrongholdMappinDefinition:
   $type: gamedataMappinDefinition_Record
