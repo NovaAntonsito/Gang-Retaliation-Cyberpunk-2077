@@ -45,6 +45,7 @@ public class GRMenuData extends ScriptableSystem {
     private let m_page: Int32;
     private let m_arsenalPage: Int32;
     private let m_pendingView: Int32;
+    private let m_pendingBountyFocus: Int32;
     private let m_bountyMode: Bool;
     private let m_bountyLayoutLogged: Bool;
 
@@ -114,6 +115,18 @@ public class GRMenuData extends ScriptableSystem {
         let view: Int32 = this.m_pendingView - 1;
         this.m_pendingView = 0;
         return view;
+    }
+
+    // Lets clicking a Nemesis's bounty badge in the GANGS detail panel land on that same contract once
+    // InitBounty (Menu.reds) opens - same +1/-1 "0 means none" encoding as m_pendingView above.
+    public func RequestBountyFocus(nemesisId: Int32) {
+        this.m_pendingBountyFocus = nemesisId + 1;
+    }
+
+    public func ConsumeBountyFocus() -> Int32 {
+        let id: Int32 = this.m_pendingBountyFocus - 1;
+        this.m_pendingBountyFocus = 0;
+        return id;
     }
 
     private static func ViewIndex(view: CName) -> Int32 {
@@ -317,6 +330,10 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
     private let m_detailTabTexts: array<wref<inkText>>;
     private let m_detailTabBorders: array<wref<inkImage>>;
     private let m_detailDay: wref<inkText>;
+    private let m_detailBountyIcon: wref<inkImage>;
+    private let m_detailBountyNemesisId: Int32;
+    private let m_navMenuItem: ref<MenuItemController>;
+    private let m_headerNavTarget: CName;
     private let m_view: Int32;
     private let m_viewArsenal: wref<inkText>;
     private let m_rewards: ref<GRRewards>;
@@ -475,6 +492,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.m_page = IsDefined(this.m_data) ? this.m_data.GetPage() : 0;
         this.m_arsenalPage = IsDefined(this.m_data) ? this.m_data.GetArsenalPage() : 0;
         this.m_rewards = GRRewards.Get(this.GetPlayerControlledObject().GetGame());
+        this.m_bounties = GRBounties.Get(this.GetPlayerControlledObject().GetGame());
         this.m_selWeapon = -1;
         let pending: Int32 = IsDefined(this.m_data) ? this.m_data.ConsumePendingView() : -1;
         if pending >= 0 && pending <= 2 {
@@ -484,7 +502,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         let root: ref<inkCompoundWidget> = this.GetRootCompoundWidget();
 
         this.CreateBackground(root);
-        this.CreateHeader(root, "GR-MenuTitle");
+        this.CreateHeader(root, "GR-MenuTitle", "GR-BountyTitle", n"gangretaliation_bounty_menu");
         this.CreateRankLabels(root);
 
         let tree: ref<inkCanvas> = new inkCanvas();
@@ -673,14 +691,55 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return icon;
     }
 
-    private func CreateHeader(root: ref<inkCompoundWidget>, titleKey: String) {
+    // navTitleKey/navTarget let the screen's own title button open the OTHER top-level GangRetaliation
+    // menu scenario (NEMESES <-> BOUNTY BOARD) - a chamfered tile matching the Information tab's look,
+    // right of the title text itself rather than hanging off the bottom of the view switcher.
+    private func CreateHeader(root: ref<inkCompoundWidget>, titleKey: String, opt navTitleKey: String, opt navTarget: CName) {
         this.AddFullLine(root, 150.0);
         this.AddFullLine(root, 336.0);
 
+        let titleRow: ref<inkHorizontalPanel> = new inkHorizontalPanel();
+        titleRow.SetAnchor(inkEAnchor.TopLeft);
+        titleRow.SetMargin(new inkMargin(120.0, 168.0, 0.0, 0.0));
+        titleRow.SetFitToContent(true);
+        titleRow.Reparent(root);
+
         let title: ref<inkText> = this.NewText(this.Up(this.T(titleKey)), 64, this.Red(), n"Medium");
-        title.SetAnchor(inkEAnchor.TopLeft);
-        title.SetMargin(new inkMargin(120.0, 168.0, 0.0, 0.0));
-        title.Reparent(root);
+        title.Reparent(titleRow);
+
+        if StrLen(navTitleKey) > 0 {
+            let navBtn: ref<inkCanvas> = new inkCanvas();
+            navBtn.SetName(n"gr_header_nav");
+            navBtn.SetSize(new Vector2(320.0, 56.0));
+            navBtn.SetMargin(new inkMargin(40.0, 0.0, 0.0, 0.0));
+            navBtn.SetVAlign(inkEVerticalAlign.Center);
+            navBtn.SetInteractive(true);
+            navBtn.RegisterToCallback(n"OnRelease", this, n"OnGRHeaderNavClick");
+            navBtn.Reparent(titleRow);
+            this.m_headerNavTarget = navTarget;
+
+            let navBg: ref<inkImage> = new inkImage();
+            navBg.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+            navBg.SetTexturePart(n"cell_bg");
+            navBg.SetNineSliceScale(true);
+            navBg.SetAnchor(inkEAnchor.Fill);
+            navBg.SetTintColor(this.Dark());
+            navBg.SetOpacity(0.95);
+            navBg.Reparent(navBtn);
+
+            let navFrame: ref<inkImage> = new inkImage();
+            navFrame.SetAtlasResource(r"base\\gameplay\\gui\\common\\shapes\\atlas_shapes_sync.inkatlas");
+            navFrame.SetTexturePart(n"cell_fg");
+            navFrame.SetNineSliceScale(true);
+            navFrame.SetAnchor(inkEAnchor.Fill);
+            navFrame.SetTintColor(this.Gold());
+            navFrame.Reparent(navBtn);
+
+            let navText: ref<inkText> = this.NewText(this.Up(this.T(navTitleKey)), 28, this.Gold(), n"Bold");
+            navText.SetAnchor(inkEAnchor.Centered);
+            navText.SetAnchorPoint(new Vector2(0.5, 0.5));
+            navText.Reparent(navBtn);
+        }
 
         let summary: ref<inkText> = this.NewText("", 40, this.Gold(), n"Medium");
         summary.SetAnchor(inkEAnchor.TopRight);
@@ -778,6 +837,28 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             day.SetMargin(new inkMargin(0.0, 184.0, 120.0, 0.0));
             day.Reparent(root);
             this.m_detailDay = day;
+
+            // Active-bounty badge for the Information/History sub-tabs (their headers match: rank | gang,
+            // name, title) - hidden on Gang History, which has no single Nemesis to badge. Top aligned
+            // with the rank|gang line (header's own margin-top below, 52 + topOffset = 144) rather than
+            // the tab row above it. Reuses the exact icon GRBountyZoneMappinData.IconPart() puts on the
+            // Bounty Board's own search-zone mappin ("bounty_hunt" - the vanilla Phantom Liberty wanted-
+            // poster look), on its own atlas rather than the shapes one everything else here uses.
+            // Clickable: opens the Bounty Board already focused on this Nemesis's contract (OpenGRMenu).
+            let bountyIcon: ref<inkImage> = new inkImage();
+            bountyIcon.SetAtlasResource(r"base\\gameplay\\gui\\common\\icons\\mappin_icons.inkatlas");
+            bountyIcon.SetTexturePart(n"bounty_hunt");
+            bountyIcon.SetAnchor(inkEAnchor.TopRight);
+            bountyIcon.SetAnchorPoint(new Vector2(1.0, 0.0));
+            bountyIcon.SetMargin(new inkMargin(0.0, 144.0, 16.0, 0.0));
+            bountyIcon.SetSize(new Vector2(88.0, 88.0));
+            bountyIcon.SetTintColor(this.Gold());
+            bountyIcon.SetVisible(false);
+            bountyIcon.SetInteractive(true);
+            bountyIcon.RegisterToCallback(n"OnRelease", this, n"OnGRBountyBadgeClick");
+            bountyIcon.Reparent(detail);
+            this.m_detailBountyIcon = bountyIcon;
+            this.m_detailBountyNemesisId = -1;
 
             let names: array<String>;
             ArrayPush(names, StrUpper(this.T("GR-DetailTabInfo")));
@@ -1117,6 +1198,21 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         frame.Reparent(card);
         ArrayPush(this.m_cardFrames, frame);
         this.StyleFrame(frame, entry, selected);
+
+        if IsDefined(this.m_bounties) && this.m_bounties.HasOpenBounty(entry.id) {
+            // Same vanilla "wanted poster" icon the Bounty Board's own search-zone mappin uses
+            // (GRBountyZoneMappinData.IconPart(), Rewards.reds) - see CreateDetail's Information-tab
+            // badge for the matching one in the detail panel.
+            let bountyIcon: ref<inkImage> = new inkImage();
+            bountyIcon.SetAtlasResource(r"base\\gameplay\\gui\\common\\icons\\mappin_icons.inkatlas");
+            bountyIcon.SetTexturePart(n"bounty_hunt");
+            bountyIcon.SetAnchor(inkEAnchor.TopRight);
+            bountyIcon.SetAnchorPoint(new Vector2(1.0, 0.0));
+            bountyIcon.SetMargin(new inkMargin(0.0, small ? 10.0 : 14.0, small ? 10.0 : 14.0, 0.0));
+            bountyIcon.SetSize(new Vector2(small ? 36.0 : 44.0, small ? 36.0 : 44.0));
+            bountyIcon.SetTintColor(this.Gold());
+            bountyIcon.Reparent(card);
+        }
 
         let content: ref<inkVerticalPanel> = new inkVerticalPanel();
         content.SetAnchor(inkEAnchor.Fill);
@@ -1571,6 +1667,25 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.FillDetailInfo(entry);
     }
 
+    // Shared by Information and History (their headers match - rank | gang, name, title); Gang History
+    // calls HideDetailBountyBadge instead since it has no single Nemesis to badge.
+    private func ShowDetailBountyBadge(entry: ref<GRMenuEntry>) {
+        if !IsDefined(this.m_detailBountyIcon) {
+            return;
+        }
+        let open: Bool = IsDefined(this.m_bounties) && this.m_bounties.HasOpenBounty(entry.id);
+        this.m_detailBountyIcon.SetVisible(open);
+        this.m_detailBountyNemesisId = open ? entry.id : -1;
+    }
+
+    private func HideDetailBountyBadge() {
+        if !IsDefined(this.m_detailBountyIcon) {
+            return;
+        }
+        this.m_detailBountyIcon.SetVisible(false);
+        this.m_detailBountyNemesisId = -1;
+    }
+
     // sub-tab 0, Information: unchanged content from before the History merge.
     private func FillDetailInfo(entry: ref<GRMenuEntry>) {
         let header: ref<inkVerticalPanel> = this.m_detailHeader;
@@ -1579,6 +1694,8 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         panel.RemoveAllChildren();
         let rankColor: HDRColor = this.RankColor(entry.rank);
         let width: Float = 888.0;
+
+        this.ShowDetailBountyBadge(entry);
 
         this.NewText(this.RankName(entry.rank) + "  |  " + this.Up(entry.gang), 28, this.Cyan(), n"Bold").Reparent(header);
         if entry.dead {
@@ -1804,6 +1921,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         panel.RemoveAllChildren();
         let gi: GameInstance = this.GetPlayerControlledObject().GetGame();
         let hist: ref<GRChronData> = GRChronData.Get(gi);
+        this.ShowDetailBountyBadge(entry);
 
         this.NewText(this.RankName(entry.rank) + "  |  " + this.Up(entry.gang), 28, this.Cyan(), n"Bold").Reparent(header);
         if entry.dead {
@@ -1852,6 +1970,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         panel.RemoveAllChildren();
         let gi: GameInstance = this.GetPlayerControlledObject().GetGame();
         let hist: ref<GRChronData> = GRChronData.Get(gi);
+        this.HideDetailBountyBadge();
 
         let gangColor: HDRColor = this.GangColor(entry.gangKey);
         let name: ref<inkText> = this.NewWrappedText(this.Up(entry.gang), 66, gangColor, 888.0);
@@ -2356,11 +2475,8 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         return this.Substitute(this.T(key), args);
     }
 
-    // Two lines: GANGS | TERRITORY on top (with the TAB key hint), ARSENAL | BOUNTIES below, indented to
-    // line its text up under GANGS (past the TAB tag's own width + margin). BOUNTIES is a label only for
-    // now, not wired to a click handler - the Bounty Board is a separate full menu scenario
-    // (gangretaliation_bounty_menu), not an in-place view like the other 3, so making it clickable here
-    // needs its own follow-up work to request that menu open instead of just flipping m_view.
+    // TAB  GANGS | TERRITORY | ARSENAL, one line - BOUNTIES moved to the title row (CreateHeader's
+    // navTitleKey/navTarget) since hanging a 4th item off a 2nd line here read as orphaned.
     private func CreateViewSwitch(root: ref<inkCompoundWidget>) {
         let outer: ref<inkVerticalPanel> = new inkVerticalPanel();
         outer.SetName(n"view_switch");
@@ -2374,6 +2490,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         row1.Reparent(outer);
 
         let key: ref<inkCompoundWidget> = this.NewTag("TAB", 22, this.Cyan());
+        key.SetVAlign(inkEVerticalAlign.Center);
         key.SetMargin(new inkMargin(0.0, 0.0, 20.0, 0.0));
         key.Reparent(row1);
 
@@ -2395,25 +2512,55 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         territory.Reparent(row1);
         this.m_viewTerritory = territory;
 
-        let row2: ref<inkHorizontalPanel> = new inkHorizontalPanel();
-        row2.SetFitToContent(true);
-        row2.SetMargin(new inkMargin(81.0, 8.0, 0.0, 0.0));
-        row2.Reparent(outer);
+        let sep2: ref<inkText> = this.NewText("  |  ", 32, this.Dim(), n"Medium");
+        sep2.SetVAlign(inkEVerticalAlign.Center);
+        sep2.Reparent(row1);
 
         let arsenal: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuViewArsenal")), 32, this.Grey(), n"Bold");
         arsenal.SetVAlign(inkEVerticalAlign.Center);
         arsenal.SetInteractive(true);
         arsenal.RegisterToCallback(n"OnRelease", this, n"OnGRViewArsenalClick");
-        arsenal.Reparent(row2);
+        arsenal.Reparent(row1);
         this.m_viewArsenal = arsenal;
+    }
 
-        let sep2: ref<inkText> = this.NewText("  |  ", 32, this.Dim(), n"Medium");
-        sep2.SetVAlign(inkEVerticalAlign.Center);
-        sep2.Reparent(row2);
+    // Opens the OTHER top-level GangRetaliation menu scenario (NEMESES <-> BOUNTY BOARD) from wherever
+    // we are right now, the same way the vanilla JOURNAL/character-menu buttons do (GRAddBountyButton/
+    // GRAddNemesisButton) - a SelectMenuRequest naming a MenuItemController whose MenuData.fullscreenName
+    // is the target, queued up to MenuScenario_HubMenu's own OnOpenMenu handler (wrapped below). Passing
+    // focusNemesisId (>= 0) also stashes which Nemesis's bounty to auto-select once InitBounty opens
+    // (see RequestBountyFocus/ConsumeBountyFocus on GRMenuData), for the detail-panel badge's own click.
+    // m_navMenuItem keeps the holder alive past this function's scope in case QueueEvent is deferred.
+    private func OpenGRMenu(target: CName, focusNemesisId: Int32) {
+        let gi: GameInstance = this.GetPlayerControlledObject().GetGame();
+        if focusNemesisId >= 0 && IsDefined(this.m_data) {
+            this.m_data.RequestBountyFocus(focusNemesisId);
+        }
+        let data: MenuData = Equals(target, n"gangretaliation_bounty_menu") ? GRBountyMenuItem(gi) : GRNemesisMenuItem(gi);
+        let holder: ref<MenuItemController> = new MenuItemController();
+        holder.Init(data);
+        this.m_navMenuItem = holder;
+        let request: ref<SelectMenuRequest> = new SelectMenuRequest();
+        request.m_eventData = holder;
+        this.QueueEvent(request);
+        this.PlaySound(n"Button", n"OnPress");
+        GRLog("Menu: navegando a " + NameToString(target));
+    }
 
-        let bounties: ref<inkText> = this.NewText(this.Up(this.T("GR-MenuViewBounties")), 32, this.Dim(), n"Bold");
-        bounties.SetVAlign(inkEVerticalAlign.Center);
-        bounties.Reparent(row2);
+    protected cb func OnGRHeaderNavClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") {
+            return false;
+        }
+        this.OpenGRMenu(this.m_headerNavTarget, -1);
+        return true;
+    }
+
+    protected cb func OnGRBountyBadgeClick(evt: ref<inkPointerEvent>) -> Bool {
+        if !evt.IsAction(n"click") || this.m_detailBountyNemesisId < 0 {
+            return false;
+        }
+        this.OpenGRMenu(n"gangretaliation_bounty_menu", this.m_detailBountyNemesisId);
+        return true;
     }
 
     private func CreateTerritory(root: ref<inkCompoundWidget>) {
@@ -4047,7 +4194,7 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.m_bSel = -1;
         let root: ref<inkCompoundWidget> = this.GetRootCompoundWidget();
         this.CreateBackground(root);
-        this.CreateHeader(root, "GR-BountyTitle");
+        this.CreateHeader(root, "GR-BountyTitle", "GR-MenuTitle", n"gangretaliation_nemesis_menu");
 
         let board: ref<inkCanvas> = new inkCanvas();
         board.SetName(n"bounty_board");
@@ -4061,6 +4208,24 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnGRGlobalInput");
         this.FillBounty();
         GRLog("Menu: tablero de recompensas abierto (" + IntToString(ArraySize(this.m_bContracts)) + " contratos)");
+
+        // Landed here from a Nemesis's bounty badge click (OpenGRMenu/RequestBountyFocus) - jump straight
+        // to that contract's detail instead of leaving nothing selected.
+        let focusId: Int32 = IsDefined(this.m_data) ? this.m_data.ConsumeBountyFocus() : -1;
+        if focusId >= 0 {
+            for c in this.m_bContracts {
+                if c.nemesisId == focusId && GRBounties.IsOpenState(c.state) {
+                    this.m_bSel = c.index;
+                    let j: Int32 = 0;
+                    while j < ArraySize(this.m_bFrames) && j < ArraySize(this.m_bCards) {
+                        this.StyleBountyFrame(this.m_bFrames[j], this.ContractAt(this.m_bCards[j]), this.m_bCards[j] == this.m_bSel);
+                        j += 1;
+                    }
+                    this.FillBountyDetail(c);
+                    break;
+                }
+            }
+        }
     }
 
     private func CreateBountyViewSwitch(root: ref<inkCompoundWidget>) {

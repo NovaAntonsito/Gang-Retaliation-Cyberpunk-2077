@@ -9,6 +9,10 @@ local Escorts = require("modules/escorts")
 local Vehicles = require("modules/vehicles")
 local CyberLooks = require("modules/cyberlooks")
 
+-- Keep in sync with build/build_release.py's VERSION whenever it changes (that script's check_version()
+-- enforces this, along with CHANGELOG.md/README.md/Localization.reds's "Gang Retaliation vX.X.X" strings).
+local VERSION = "1.5.5"
+
 local GR = {
     dev = true, -- GR_DEV_FLAG
     overlayOpen = false,
@@ -1432,12 +1436,6 @@ local function update(delta)
         GR.fleeTimer = 0
         prof("refreshCampaign", refreshCampaign)
         History.onCampaignTick(GR.campaignId)
-        local settings = getSettings()
-        if settings and settings.clearHistoryLog then
-            local cleared = History.ClearCurrentCampaign()
-            settings:ClearHistoryLogReset()
-            debugLog(cleared and "Historial borrado (ajuste Clear Log)" or "Clear Log: no hay campana activa, nada que borrar")
-        end
     end
     if GR.campaignId == 0 then return end
     if (GR.warmup or 0) > 0 then
@@ -1511,6 +1509,13 @@ local function update(delta)
         debugLog("Escaramuza: " .. tostring(resultS))
         local okR, resultR = prof("tryRaid", pcall, tryRaid, false)
         debugLog("Redada: " .. tostring(resultR))
+        local intelSys = getSystem("GangRetaliation.GRIntelSystem")
+        if intelSys then
+            local okSweep, swept = pcall(function() return intelSys:SweepPlayerInventory() end)
+            if okSweep and swept and swept > 0 then
+                debugLog("Intel: " .. swept .. " Intel Shard(s) sobrantes retirados del inventario")
+            end
+        end
     end
 
     flushMessages(delta)
@@ -1749,7 +1754,7 @@ registerForEvent("onOverlayOpen", function() GR.overlayOpen = true end)
 registerForEvent("onOverlayClose", function() GR.overlayOpen = false end)
 
 local function drawReleaseWindow()
-    if ImGui.Begin("Gang Retaliation") then
+    if ImGui.Begin("Gang Retaliation v" .. VERSION) then
         if GR.campaignId == 0 then
             ImGui.Text(text("GR-UiWaiting", "Waiting for a loaded save..."))
         else
@@ -1773,7 +1778,7 @@ registerForEvent("onDraw", function()
         return
     end
 
-    if ImGui.Begin("Gang Retaliation (dev)") then
+    if ImGui.Begin("Gang Retaliation v" .. VERSION .. " (dev)") then
         if GR.campaignId == 0 then
             ImGui.Text(text("GR-UiWaiting", "Waiting for a loaded save..."))
         else
@@ -2092,6 +2097,10 @@ registerForEvent("onDraw", function()
             if ImGui.Button("Save now") then Store.save() end
             ImGui.SameLine()
             if ImGui.Button("Clear campaign") then Store.clearCampaign(GR.campaignId) end
+            if ImGui.Button("Clear history log (this campaign, cannot be undone)") then
+                local cleared = History.ClearCurrentCampaign()
+                debugLog(cleared and "Historial borrado (boton Clear history log)" or "Clear history log: no hay campana activa, nada que borrar")
+            end
             if GR.lastAction ~= "" then ImGui.TextDisabled(GR.lastAction) end
         end
     end

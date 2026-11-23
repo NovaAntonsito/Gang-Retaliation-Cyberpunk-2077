@@ -2261,6 +2261,29 @@ public class GRIntelSystem extends ScriptableSystem {
         return false;
     }
 
+    // Safety net for @wrapMethod(PlayerPuppet) OnItemAddedToInventory below (user-reported: a shard can
+    // end up actually sitting in V's inventory instead of being removed the instant it's looted, same
+    // "Money Shard" trick vanilla uses for Gen_MoneyShard - root cause not yet found). Called periodically
+    // from Lua's tick (init.lua) via the shared n"GRIntelShard" tag (shard.yaml) rather than walking the
+    // whole inventory and checking each item against IsShardRecord.
+    public func SweepPlayerInventory() -> Int32 {
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) {
+            return 0;
+        }
+        let items: array<wref<gameItemData>>;
+        GameInstance.GetTransactionSystem(gi).GetItemListByTag(player, n"GRIntelShard", items);
+        let removed: Int32 = 0;
+        for item in items {
+            if IsDefined(item) {
+                GameInstance.GetTransactionSystem(gi).RemoveItem(player, item.GetID(), item.GetQuantity());
+                removed += 1;
+            }
+        }
+        return removed;
+    }
+
     private func GangIndex(gang: String) -> Int32 {
         let gangs: array<String> = GRIntelSystem.Gangs();
         let i: Int32 = 0;

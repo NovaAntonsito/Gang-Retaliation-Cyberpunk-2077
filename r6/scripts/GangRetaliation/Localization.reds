@@ -61,8 +61,6 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetDebugOnScreenCampaignDesc", "Everything else from the Lua side - Nemesis promotions, chrome-look rerolls, boss weapons, raids, ambushes, gigs, traits. Only shown when the on-screen debug log above is also on.");
         this.Text("GR-SetDebugOnScreenStronghold", "On-screen: Strongholds");
         this.Text("GR-SetDebugOnScreenStrongholdDesc", "Stronghold placement/scanning messages (location picks, moves, revalidation). These always write to gamelog.log regardless of the debug log setting - this only controls whether they also show on screen.");
-        this.Text("GR-SetClearHistoryLog", "Clear history log (this campaign)");
-        this.Text("GR-SetClearHistoryLogDesc", "WARNING: permanently deletes every recorded Nemesis History event for your CURRENT campaign only (other saves are untouched). This cannot be undone. Check the box to confirm; it unchecks itself once the clear is done.");
         this.Text("GR-CatAbout", "About");
         this.Text("GR-SetVersion", "Gang Retaliation v1.5.5");
         this.Text("GR-SetVersionDesc", "Informational only. Toggling this has no effect.");
@@ -136,7 +134,6 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-MenuViewGangs", "Gangs");
         this.Text("GR-MenuViewTerritory", "Territory");
         this.Text("GR-MenuViewArsenal", "Arsenal");
-        this.Text("GR-MenuViewBounties", "Bounties");
         this.Text("GR-MenuWeapons", "WEAPONS");
         this.Text("GR-MenuMainWeapon", "Main weapon");
         this.Text("GR-MenuCopies", "Copies");
@@ -619,8 +616,6 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetDebugOnScreenCampaignDesc", "Todo lo demas del lado de Lua: ascensos de Némesis, nuevo look cromado, armas de jefe, redadas, emboscadas, gigs, rasgos. Solo se muestra si el log de depuración en pantalla de arriba tambien esta activo.");
         this.Text("GR-SetDebugOnScreenStronghold", "En pantalla: Guaridas");
         this.Text("GR-SetDebugOnScreenStrongholdDesc", "Mensajes de colocacion/escaneo de guaridas (eleccion de ubicacion, mudanzas, revalidacion). Estos siempre se escriben en gamelog.log sin importar el log de depuración - esto solo controla si tambien se muestran en pantalla.");
-        this.Text("GR-SetClearHistoryLog", "Borrar historial (esta campaña)");
-        this.Text("GR-SetClearHistoryLogDesc", "ADVERTENCIA: borra para siempre todo el historial de Némesis registrado de tu campaña ACTUAL solamente (otras partidas no se tocan). Esto no se puede deshacer. Tildá la casilla para confirmar; se destilda sola cuando termina de borrar.");
         this.Text("GR-CatAbout", "Acerca de");
         this.Text("GR-SetVersion", "Gang Retaliation v1.5.5");
         this.Text("GR-SetVersionDesc", "Solo informativo. Activarlo o desactivarlo no hace nada.");
@@ -694,7 +689,6 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-MenuViewGangs", "Bandas");
         this.Text("GR-MenuViewTerritory", "Territorio");
         this.Text("GR-MenuViewArsenal", "Arsenal");
-        this.Text("GR-MenuViewBounties", "Recompensas");
         this.Text("GR-MenuWeapons", "ARMAS");
         this.Text("GR-MenuMainWeapon", "Arma principal");
         this.Text("GR-MenuCopies", "Copias");

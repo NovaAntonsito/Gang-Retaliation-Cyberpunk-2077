@@ -35,13 +35,6 @@ public class GRSettings extends ScriptableSystem {
         GRLog("Ajustes actualizados");
     }
 
-    // Called from Lua (modules/history.lua via init.lua's tick) once it has actually performed the
-    // clear - flips the Mod Settings checkbox back to false so it reads as a momentary action instead
-    // of a stuck-on toggle.
-    public func ClearHistoryLogReset() {
-        this.clearHistoryLog = false;
-    }
-
     @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatGeneral")
     @runtimeProperty("ModSettings.category.order", "10")
@@ -440,19 +433,6 @@ public class GRSettings extends ScriptableSystem {
     @runtimeProperty("ModSettings.displayName", "GR-SetDebugOnScreenStronghold")
     @runtimeProperty("ModSettings.description", "GR-SetDebugOnScreenStrongholdDesc")
     public let debugOnScreenStronghold: Bool = true;
-
-    // Toggle-as-button: flipping this to true is detected by init.lua's own once-a-second tick
-    // (modules/history.lua's History.ClearCurrentCampaign, gated to the ACTIVE campaign's own
-    // history file only - never another save's), which runs the clear then calls
-    // ClearHistoryLogReset() below to flip it back to false - same "acts once, then resets
-    // itself" pattern as every other action-style Mod Settings entry in this ecosystem, since
-    // the framework only has interactive value widgets, no real buttons.
-    @runtimeProperty("ModSettings.mod", "GR-ModName")
-    @runtimeProperty("ModSettings.category", "GR-CatDebug")
-    @runtimeProperty("ModSettings.category.order", "90")
-    @runtimeProperty("ModSettings.displayName", "GR-SetClearHistoryLog")
-    @runtimeProperty("ModSettings.description", "GR-SetClearHistoryLogDesc")
-    public let clearHistoryLog: Bool = false;
 
     // No plain label/read-only row exists in the Mod Settings framework (checked its
     // source: every ConfigVar type is an interactive Bool/Int/Float/Name/list widget).

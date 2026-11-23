@@ -2075,6 +2075,11 @@ public class GRBounties extends ScriptableSystem {
         return -1;
     }
 
+    // Public analog of OpenIndex for the Nemesis/GANGS screen's bounty badge (Menu.reds AddCard/FillDetailInfo).
+    public func HasOpenBounty(nemesisId: Int32) -> Bool {
+        return this.OpenIndex(nemesisId) >= 0;
+    }
+
     private func CountState(wanted: Int32) -> Int32 {
         let count: Int32 = 0;
         for state in this.m_states {

@@ -73,8 +73,15 @@ def compile_check():
 
 
 def check_version():
-    for rel, pattern in [(Path("CHANGELOG.md"), rf"^## \[?{re.escape(VERSION)}\]?\b"),
-                         (Path("README.md"), rf"Current version: {re.escape(VERSION)}\b")]:
+    checks = [
+        (Path("CHANGELOG.md"), rf"^## \[?{re.escape(VERSION)}\]?\b"),
+        (Path("README.md"), rf"Current version: {re.escape(VERSION)}\b"),
+        # Mod Settings version display (en + es, same untranslated "Gang Retaliation vX.X.X" text in both).
+        (Path("r6/scripts/GangRetaliation/Localization.reds"), rf'"Gang Retaliation v{re.escape(VERSION)}"'),
+        # CET overlay window title.
+        (INIT_LUA, rf'VERSION = "{re.escape(VERSION)}"'),
+    ]
+    for rel, pattern in checks:
         text = (MOD / rel).read_text(encoding="utf-8")
         if not re.search(pattern, text, re.M):
             fail(f"version check failed for {rel} (expected {pattern})")

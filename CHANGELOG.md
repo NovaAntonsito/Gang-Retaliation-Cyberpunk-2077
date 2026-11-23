@@ -10,6 +10,11 @@
 - Hunt zones no longer land underground: the hunt point is checked against the surface (a point with a floor or structure more than 6 m above it is discarded and another is picked; if the ground isn't loaded yet, it is checked again when you get within 200 m), and the pin and the target appear at surface level.
 - The GANG RETALIATION map filter checkbox now actually controls the bounty search-zone circle: it used to share a marker variant with a lot of unrelated game mappins, so (un)checking it did nothing to the circle, and unchecking every box could still leave other mods' pins hidden.
 - History and Gang History now list events newest first, with no redundant trailing "Now" line (the GANGS panel already shows the current day at the top).
+- A disarmed Nemesis fleeing from you is no longer blocked by the raid "can't flee" rule, and a disarmed/dismembered Nemesis found hiding no longer gets dragged back into a pointless fight. A self-heal injector being misread as a weapon could cause the first of these; fixed too.
+- NPCs that should quietly disappear after fleeing out of sight (not ones you actually fought) could fail to actually despawn; fixed.
+- Raids near V now only target a gang that actually has a foothold in your current district - a Barghest raid in Dogtown can no longer come after, say, a Maelstrom Nemesis with no presence there.
+- Vehicle ambushes no longer spawn a car somewhere with no real road (a rooftop, for instance) when there's no traffic nearby to anchor the spawn to - falls back to an on-foot ambush instead.
+- Intel Shards picked up off a downed gang member could end up stuck in your inventory instead of vanishing on pickup like they should; a periodic check now clears out any that slip through.
 
 #### Changed
 - Contracts are paid on any takedown by you (knockout or kill). The old "make sure they don't come back" condition is gone. Boss contracts still need the Boss to fall inside their stronghold.
@@ -27,7 +32,10 @@
 - Every Nemesis who goes down, knocked out or killed, now carries an Intel Shard.
 - A rare surprise from Rogue: once in a while one of her contracts comes marked **SPECIAL**. Complete every optional objective on it and she has something for you.
 - **History merged into the GANGS screen.** The standalone Gang Retaliation History add-on's screen is replaced by two new sub-tabs on the GANGS detail panel: **History** (a selected Nemesis's own events) and **Gang History** (every event tagged to their whole gang). If you had the old add-on installed, its log is migrated into this mod automatically the first time you load with this version - nothing to do by hand.
-- **Clear Log** debug setting (Mod Settings, under Debug): permanently deletes the active campaign's history. Does not touch other campaigns' saved history.
+- History and Information now show a bounty badge on a Nemesis with an open contract; clicking it jumps straight to that contract in the Bounty Board.
+- GANGS and Bounty Board each have a button next to their own title to jump straight to the other one.
+- **Clear Log** debug button (CET overlay window, next to "Clear campaign"): permanently deletes the active campaign's history. Does not touch other campaigns' saved history.
+- The CET overlay window title now shows the installed version.
 
 ### Español
 
@@ -37,6 +45,11 @@
 - Las zonas de caza ya no quedan bajo tierra: el punto de caza se comprueba contra la superficie (si encima hay un piso o una estructura a más de 6 m, se descarta y se elige otro; si el suelo todavía no cargó, se vuelve a comprobar cuando estés a menos de 200 m), y el pin y el objetivo aparecen a nivel de superficie.
 - La casilla del filtro de mapa GANG RETALIATION ahora sí controla el círculo de la zona de búsqueda de recompensas: antes compartía variante de marcador con muchísimos otros mappins ajenos al mod, así que (des)tildarla no le hacía nada al círculo, y destildar todas las casillas igual podía dejar ocultos pins de otros mods.
 - Historial e Historial de Banda ahora listan los eventos de más nuevo a más viejo, sin la línea final redundante "Now" (el panel de GANGS ya muestra el día actual arriba).
+- Un Némesis desarmado que huye de ti ya no queda bloqueado por la regla de "no puede huir" de las redadas, y un Némesis desarmado/desmembrado encontrado escondido ya no es arrastrado de vuelta a una pelea sin sentido. Un inyector de autocuración mal interpretado como arma podía causar lo primero; también arreglado.
+- Los NPCs que deberían desaparecer en silencio tras huir de la vista (no los que de verdad peleaste) podían no llegar a despawnear; arreglado.
+- Las redadas cerca de V ahora solo apuntan a una banda que de verdad tiene pie en tu distrito actual - una redada de Barghest en Dogtown ya no puede ir contra, por ejemplo, un Némesis de Maelstrom sin presencia ahí.
+- Las emboscadas en vehículo ya no aparecen en un lugar sin camino real (una azotea, por ejemplo) cuando no hay tráfico cerca para anclar la aparición - en ese caso cae a una emboscada a pie.
+- Los Shards de Intel recogidos de un pandillero caído podían quedar atascados en el inventario en vez de desaparecer al recogerlos como deberían; un chequeo periódico ahora retira los que se cuelan.
 
 #### Cambiado
 - Los contratos se cobran con cualquier derribo hecho por ti (noqueo o muerte). Se quitó la condición de "que no vuelva". Los contratos de Jefe siguen exigiendo que el Jefe caiga dentro de su guarida.
@@ -54,7 +67,10 @@
 - Todo Némesis que cae, noqueado o muerto, ahora lleva un Shard de intel.
 - Una rara sorpresa de Rogue: de vez en cuando uno de sus contratos viene marcado como **ESPECIAL**. Completa todos los opcionales y ella tiene algo para ti.
 - **Historial fusionado a la pantalla GANGS.** La pantalla del add-on independiente Gang Retaliation History se reemplaza por dos pestañas nuevas en el panel de detalle de GANGS: **Historial** (los eventos propios del Némesis seleccionado) y **Historial de Banda** (todo evento marcado con toda su banda). Si tenías el add-on viejo instalado, su registro se migra a este mod automáticamente la primera vez que cargues con esta versión - no hay que hacer nada a mano.
-- Ajuste de debug **Clear Log** (Ajustes del Mod, en Debug): borra permanentemente el historial de la campaña activa. No toca el historial guardado de otras campañas.
+- Historial e Información ahora muestran una insignia de recompensa en un Némesis con contrato abierto; al hacerle clic se salta directo a ese contrato en el Bounty Board.
+- GANGS y Bounty Board tienen cada uno un botón junto a su propio título para saltar directo al otro.
+- Botón de debug **Clear Log** (ventana de CET, junto a "Clear campaign"): borra permanentemente el historial de la campaña activa. No toca el historial guardado de otras campañas.
+- El título de la ventana de CET ahora muestra la versión instalada.
 
 ## [1.4.10] - 2026-11-19
 
