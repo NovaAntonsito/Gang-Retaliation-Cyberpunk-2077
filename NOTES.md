@@ -16,7 +16,7 @@ Related: `CHANGELOG.md` (release notes), `README.md` (layout), `../GangRetaliati
 
 - **NovaAntonsito** wrote Gang Retaliation and publishes it (Nexus mod 36235). They are the author and decide what ships.
 - The maintainer here is a co-author on this work. We contribute changes on top of their releases; they publish them. History/Chronicle and Expanded Names are separate companion mods.
-- Our releases so far: **1.4.7** (map filter crash fix, stronghold filter, tooltip banner), **1.4.8**, and **1.4.9** (see `CHANGELOG.md`). PR #9 (scrollable detail panel, FALLEN redesign, unified intel shard chance) and PR #10 (the 2026-11-21 fixes/debugging session) are both **merged into `main`** as of 2026-11-21. **As of 2026-11-22, `RedFalcon` is ahead of `main` again** with the full History-merge (Phases 1-3), the raid-targeting/vehicle-ambush/intel-shard fixes, and the bounty UI work below (section 5) - still versioned 1.5.5, not yet built/released as its own numbered update, about to go up as a new PR.
+- Our releases so far: **1.4.7** (map filter crash fix, stronghold filter, tooltip banner), **1.4.8**, and **1.4.9** (see `CHANGELOG.md`). PR #9 (scrollable detail panel, FALLEN redesign, unified intel shard chance) and PR #10 (the 2026-11-21 fixes/debugging session) are both **merged into `main`** as of 2026-11-21. **As of 2026-11-22, `RedFalcon` is ahead of `main` again** with the full History-merge (Phases 1-3), the raid-targeting/vehicle-ambush/intel-shard fixes, and the bounty UI work below (section 5) - still versioned 1.5.5, not yet built/released as its own numbered update, open as **PR #14** against `main`.
 - Do not publish or send anything outside the project without the maintainer's go-ahead.
 
 ## 2. Layout and workflow
