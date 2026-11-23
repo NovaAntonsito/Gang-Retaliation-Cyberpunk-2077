@@ -461,16 +461,17 @@ public class GRStronghold extends ScriptableSystem {
             GRLog("Caza #" + IntToString(nemesisId) + ": POI " + label + " cubierto (superficie Z=" + FloatToStringPrec(top, 1) + ", POI Z=" + FloatToStringPrec(pos.Z, 1) + "), descartado");
             return 2;
         }
-        // Alcanzabilidad por navmesh (V a <= 200 m): sin camino corto desde V = interior cerrado/patio sin acceso, se descarta como los cubiertos.
+        // Alcanzabilidad por navmesh solo con V a <= 80 m en planta (mas lejos el navmesh da falsos "sin camino"). reach == 2 no descarta el POI: BeginHunt reubica el spawn si no hay camino.
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
         let pathLen: Float = 0.0;
         let straight: Float = 0.0;
-        let reach: Int32 = GRReachFromPlayer(this.GetGameInstance(), new Vector4(pos.X, pos.Y, floorZ, 1.0), pathLen, straight);
-        if reach == 2 {
-            this.MarkCovered(pos);
-            GRLog("Caza #" + IntToString(nemesisId) + ": POI " + label + " inalcanzable (" + GRReachText(reach, pathLen, straight) + "), descartado");
-            return 2;
+        let reach: Int32 = -1;
+        if IsDefined(player) && Vector4.Distance2D(player.GetWorldPosition(), pos) <= 80.0 {
+            reach = GRReachFromPlayer(this.GetGameInstance(), new Vector4(pos.X, pos.Y, floorZ, 1.0), pathLen, straight);
         }
-        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if reach == 2 {
+            GRLog("Caza #" + IntToString(nemesisId) + ": POI " + label + " sin camino por navmesh (" + GRReachText(reach, pathLen, straight) + "), se conserva");
+        }
         // Techo bajo (1,5 a 6 m): puede ser un interior; solo se valida si el navmesh confirma el camino.
         if IsDefined(player) && Vector4.Distance2D(player.GetWorldPosition(), pos) <= 150.0 && !(reach == 0 && GRLowRoof(top, pos.Z)) {
             validated = true;

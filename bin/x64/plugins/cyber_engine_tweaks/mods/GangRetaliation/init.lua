@@ -907,6 +907,8 @@ local function trySkirmish(force)
     return "skirmish " .. a .. " vs " .. d
 end
 
+local RAID_OUTSIDE_TERRITORY_PERCENT = 10
+
 local function tryRaid(force)
     local settings = getSettings()
     local spawner = getSpawner()
@@ -926,17 +928,30 @@ local function tryRaid(force)
     local districtGangs = (warSys and War.districtGangs(campaign, warSys:GetCurrentDistrict()))
         or Ambush.parseGangs(spawner:GetDistrictGangs())
     local raidForce = spawner:GetRaidForce()
-    -- A raid means NCPD/Barghest hitting a hideout, so the target's gang must actually have a
-    -- foothold in the district the player is standing in right now (districtGangs above) - Barghest
-    -- additionally never raids its own hideouts.
     local pool = {}
     for _, c in ipairs(campaign.nemeses) do
-        if districtGangs[c.gang] and c.gang ~= raidForce then
-            table.insert(pool, c)
+        if c.gang ~= "Barghest" then table.insert(pool, c) end
+    end
+    local n
+    if raidForce == "Barghest" then
+        districtGangs = {}
+        n = Ambush.pick(pool, districtGangs, false)
+        if not n then return "no outsider Nemesis for a Barghest raid" end
+    else
+        local source = pool
+        if next(districtGangs) ~= nil and math.random(100) > RAID_OUTSIDE_TERRITORY_PERCENT then
+            source = {}
+            for _, c in ipairs(pool) do
+                if districtGangs[c.gang] then table.insert(source, c) end
+            end
+        end
+        n = Ambush.pick(source, districtGangs, false)
+        if not n then
+            if source ~= pool and Ambush.pick(pool, districtGangs, false) then return "no raid: outside territory" end
+            if Ambush.pick(campaign.nemeses, {}, false) then return "no raid: Barghest target" end
+            return "no living Nemesis"
         end
     end
-    local n = Ambush.pick(pool, districtGangs, false)
-    if not n then return string.format("no %s Nemesis with a foothold here", raidForce) end
 
     pushTraits(n)
     if not spawner:StartRaid(n.id, n.recordID, n.appearance or "", Ambush.escorts(n, settings.ambushMaxEscorts), fullName(n), Ambush.police(n)) then
