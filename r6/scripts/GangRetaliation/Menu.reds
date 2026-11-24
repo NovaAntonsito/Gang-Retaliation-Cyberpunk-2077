@@ -2745,6 +2745,25 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         bar.Reparent(row);
     }
 
+    // Fixed per-region column assignment for the Territory screen, user-chosen layout (not a rolling
+    // index%4 - that scattered regions unpredictably once Eastern/Southern Badlands were added). Matches
+    // against the already-localized display label GetAllDistricts()/DistrictLabel() produces (e.g. the
+    // game's own "Santo Domingo", not a raw EnumName), plus this mod's own literal "Eastern Badlands"/
+    // "Southern Badlands" region strings. Anything unmapped falls back to the last column rather than
+    // being silently dropped.
+    private func TerritoryColumnFor(region: String) -> Int32 {
+        if Equals(region, "Watson") || Equals(region, "Westbrook") {
+            return 0;
+        }
+        if Equals(region, "Heywood") || Equals(region, "Santo Domingo") || Equals(region, "Pacifica") {
+            return 1;
+        }
+        if Equals(region, "Dogtown") {
+            return 2;
+        }
+        return 3;
+    }
+
     private func FillTerritory() {
         this.m_territory.RemoveAllChildren();
         ArrayClear(this.m_tKeys);
@@ -2839,11 +2858,15 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
             }
             i += 1;
         }
+        let columnRegionCount: array<Int32> = [0, 0, 0, 0];
         let r: Int32 = 0;
         while r < ArraySize(seen) {
-            let column: ref<inkVerticalPanel> = columns[r % 4];
+            let colIndex: Int32 = this.TerritoryColumnFor(seen[r]);
+            let column: ref<inkVerticalPanel> = columns[colIndex];
+            let stackIndex: Int32 = columnRegionCount[colIndex];
+            columnRegionCount[colIndex] = stackIndex + 1;
             let heading: ref<inkText> = this.NewText(this.Up(seen[r]), 26, this.Light(), n"Bold");
-            heading.SetMargin(new inkMargin(0.0, r >= 4 ? 22.0 : 0.0, 0.0, 10.0));
+            heading.SetMargin(new inkMargin(0.0, stackIndex > 0 ? 22.0 : 0.0, 0.0, 10.0));
             heading.Reparent(column);
             i = 0;
             while i < count {

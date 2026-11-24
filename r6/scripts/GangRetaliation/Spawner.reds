@@ -340,12 +340,18 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     private func HasSpaceForCar(vehicle: ref<VehicleObject>, out spawnPos: Vector4) -> Bool {
-        let spatial: ref<SpatialQueriesSystem> = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
-        let box: Vector4 = new Vector4(2.5, 4.0, 1.0, 0.0);
         let forward: Vector4 = vehicle.GetWorldForward();
         forward.Z = 0.0;
         forward = Vector4.Normalize(forward);
-        let origin: Vector4 = vehicle.GetWorldPosition();
+        return this.HasOpenSpaceForCarAt(vehicle.GetWorldPosition(), forward, spawnPos);
+    }
+
+    // Same clearance check as HasSpaceForCar, but anchored at an arbitrary point/heading instead of
+    // an existing traffic vehicle - used by the Badlands open-field fallback below, where there is no
+    // traffic vehicle to piggyback on in the first place.
+    private func HasOpenSpaceForCarAt(origin: Vector4, forward: Vector4, out spawnPos: Vector4) -> Bool {
+        let spatial: ref<SpatialQueriesSystem> = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
+        let box: Vector4 = new Vector4(2.5, 4.0, 1.0, 0.0);
         let angles: array<Float> = [0.0, Pi()];
         for angle in angles {
             let dir: Vector4 = Vector4.RotateAxis(forward, new Vector4(0.0, 0.0, 1.0, 0.0), angle);
@@ -360,6 +366,44 @@ public class GRSpawner extends ScriptableSystem {
             }
         }
         return false;
+    }
+
+    // Badlands is wide open terrain with essentially no buildings to accidentally land a car on top
+    // of - the rooftop risk FindSpot's generic fallback carries elsewhere (see StartVehicleAmbush)
+    // doesn't apply there, so it's fine to place a vehicle ambush without a real traffic road to
+    // anchor to.
+    public func IsInBadlands() -> Bool {
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if !IsDefined(player) || !IsDefined(player.GetPreventionSystem()) {
+            return false;
+        }
+        let current: wref<District> = player.GetPreventionSystem().GetCurrentDistrict();
+        if !IsDefined(current) {
+            return false;
+        }
+        let district: wref<District_Record> = current.GetDistrictRecord();
+        let depth: Int32 = 0;
+        while IsDefined(district) && depth < 6 {
+            if StrContains(district.EnumName(), "Badlands") {
+                return true;
+            }
+            district = district.ParentDistrict();
+            depth += 1;
+        }
+        return false;
+    }
+
+    private func FindOpenFieldVehicleSpot(player: ref<PlayerPuppet>, out spawnPos: Vector4, out spawnOri: Quaternion) -> Bool {
+        let pos: Vector4 = this.FindSpot(player, RandRangeF(0.0, 360.0), 70.0, 180.0, 0.45, false);
+        if !this.m_spotFound {
+            return false;
+        }
+        let forward: Vector4 = Vector4.Normalize(player.GetWorldPosition() - pos);
+        if !this.HasOpenSpaceForCarAt(pos, forward, spawnPos) {
+            return false;
+        }
+        spawnOri = Quaternion.BuildFromDirectionVector(forward);
+        return true;
     }
 
     private func EscortSpot(leader: Vector4, index: Int32) -> Vector4 {
@@ -949,6 +993,7 @@ public class GRSpawner extends ScriptableSystem {
             return "";
         }
         let district: wref<District_Record> = player.GetPreventionSystem().GetCurrentDistrict().GetDistrictRecord();
+        let startDistrict: wref<District_Record> = district;
         let result: String = "";
 
         while IsDefined(district) && StrLen(result) == 0 {
@@ -961,6 +1006,15 @@ public class GRSpawner extends ScriptableSystem {
             }
             district = district.ParentDistrict();
         }
+        // The vanilla game never tags any Badlands district with a gang affiliation the way it does the
+        // city gangs - Wraiths territory isn't modeled through District.Gangs() at all. Curated to an
+        // exact, user-approved list of real neighborhoods (not a blanket "Badlands" match - e.g. plain
+        // Badlands/NorthBadlands/SouthBadlands themselves, and unlisted sub-areas like Yucca or Dry
+        // Creek, intentionally get nothing) so raids/ambushes scoped to "a gang with a foothold here"
+        // only ever target Wraiths in exactly these neighborhoods.
+        if StrLen(result) == 0 && IsDefined(startDistrict) && GRWar.IsCuratedWraithsDistrict(startDistrict.EnumName()) {
+            result = "Wraiths";
+        }
         return result;
     }
 
@@ -971,6 +1025,32 @@ public class GRSpawner extends ScriptableSystem {
         }
         let district: wref<District_Record> = player.GetPreventionSystem().GetCurrentDistrict().GetDistrictRecord();
         return IsDefined(district) ? district.EnumName() : "";
+    }
+
+    // Full root-to-leaf parent chain of the player's current district (breadcrumb order: highest-level
+    // parent first, current district last), for debugging the actual District.ParentDistrict()
+    // hierarchy live (e.g. checking whether a named sub-area really nests under the top-level district
+    // its name implies).
+    public func GetDistrictChain() -> String {
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if !IsDefined(player) {
+            return "";
+        }
+        let district: wref<District_Record> = player.GetPreventionSystem().GetCurrentDistrict().GetDistrictRecord();
+        let names: array<String>;
+        let depth: Int32 = 0;
+        while IsDefined(district) && depth < 8 {
+            ArrayPush(names, district.EnumName());
+            district = district.ParentDistrict();
+            depth += 1;
+        }
+        let result: String = "";
+        let i: Int32 = ArraySize(names) - 1;
+        while i >= 0 {
+            result += (StrLen(result) > 0 ? " > " : "") + names[i];
+            i -= 1;
+        }
+        return result;
     }
 
     public func StartAmbush(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String) -> Bool {
@@ -1007,13 +1087,20 @@ public class GRSpawner extends ScriptableSystem {
         if this.FindTrafficSpot(player, pos, orientation) {
             GRLog("Vehiculo: junto a un auto del trafico a " + FloatToString(Vector4.Distance(pos, player.GetWorldPosition())) + " m");
         } else {
-            // No real road nearby to piggyback on - FindSpot's fallback has no notion of "road" at all
-            // (just reachable/open-sky/clear), which is how a vehicle ambush once spawned atop a building.
-            // Bail out instead so launchAmbush's own on-foot fallback (init.lua) takes over.
-            GRLog("Vehiculo: sin auto del trafico util, no se genera (cargados=" + IntToString(this.m_trafficFails[0])
-                + ", fuera de rango=" + IntToString(this.m_trafficFails[1]) + ", sin camino=" + IntToString(this.m_trafficFails[2])
-                + ", sin hueco=" + IntToString(this.m_trafficFails[3]) + ", a la vista=" + IntToString(this.m_trafficFails[4]) + ")");
-            return false;
+            if this.IsInBadlands() && this.FindOpenFieldVehicleSpot(player, pos, orientation) {
+                GRLog("Vehiculo: sin auto del trafico util, campo abierto en Badlands a "
+                    + FloatToString(Vector4.Distance(pos, player.GetWorldPosition())) + " m");
+            } else {
+                // No real road nearby to piggyback on - FindSpot's fallback has no notion of "road" at all
+                // (just reachable/open-sky/clear), which is how a vehicle ambush once spawned atop a
+                // building. Bail out instead so launchAmbush's own on-foot fallback (init.lua) takes
+                // over - except in Badlands (handled above), which is open enough that this risk doesn't
+                // really apply.
+                GRLog("Vehiculo: sin auto del trafico util, no se genera (cargados=" + IntToString(this.m_trafficFails[0])
+                    + ", fuera de rango=" + IntToString(this.m_trafficFails[1]) + ", sin camino=" + IntToString(this.m_trafficFails[2])
+                    + ", sin hueco=" + IntToString(this.m_trafficFails[3]) + ", a la vista=" + IntToString(this.m_trafficFails[4]) + ")");
+                return false;
+            }
         }
         let des: ref<DynamicEntitySystem> = GameInstance.GetDynamicEntitySystem();
         let spec: ref<DynamicEntitySpec> = new DynamicEntitySpec();

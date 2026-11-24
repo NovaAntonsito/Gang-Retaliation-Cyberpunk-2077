@@ -160,6 +160,10 @@ public class GRHud extends ScriptableSystem {
     private let c_debugMaxLines: Int32 = 8;
     private let c_debugLineChars: Int32 = 220;
 
+    private let m_districtBox: ref<inkCanvas>;
+    private let m_districtText: ref<inkText>;
+    private let m_districtCheckAt: Float;
+
     public static func Yellow() -> HDRColor {
         return new HDRColor(1.0, 0.82, 0.4, 1.0);
     }
@@ -247,9 +251,96 @@ public class GRHud extends ScriptableSystem {
         }
         if !IsDefined(prof) || !prof.hooksOff {
             this.Update();
+            this.CheckDistrictChange();
         }
         if session == this.m_session {
             this.ScheduleTick();
+        }
+    }
+
+    // Small standalone panel, always showing the player's current district chain (leaf -> root) while
+    // on-screen debug is on - a live readout, not a log, so it just overwrites in place as you walk
+    // around. Positioned directly above the debug log box (same horizontal alignment). Handy for
+    // checking the Badlands sub-area hierarchy without opening WolvenKit.
+    private func EnsureDistrictPanel() -> Bool {
+        if IsDefined(this.m_districtBox) {
+            return true;
+        }
+        let window: ref<inkCompoundWidget> = GameInstance.GetInkSystem().GetLayer(n"inkHUDLayer").GetVirtualWindow();
+        let hudRoot: ref<inkCompoundWidget> = IsDefined(window) ? window.GetWidgetByPathName(n"Root") as inkCompoundWidget : null;
+        if !IsDefined(hudRoot) {
+            return false;
+        }
+        let slot: ref<inkCanvas> = new inkCanvas();
+        slot.SetName(n"GangRetaliationDistrictSlot");
+        slot.SetSize(new Vector2(3840.0, 2160.0));
+        slot.SetRenderTransformPivot(new Vector2(0.0, 0.0));
+        slot.Reparent(hudRoot);
+        let watcher: ref<VirtualResolutionWatcher> = new VirtualResolutionWatcher();
+        watcher.Initialize(this.GetGameInstance());
+        watcher.ScaleWidget(slot);
+
+        // Anchored by its TOP edge (fixed margin-top) rather than tied to the log box's position, so
+        // when the chain is long enough to wrap to a second line, the box grows downward from a fixed
+        // point instead of needing to shift - with enough headroom above the log box (which starts
+        // around y=760 in this 2160-tall virtual canvas) that even two lines never overlaps it.
+        let box: ref<inkCanvas> = new inkCanvas();
+        box.SetName(n"gr_district");
+        box.SetAnchor(inkEAnchor.TopRight);
+        box.SetAnchorPoint(new Vector2(1.0, 0.0));
+        box.SetMargin(new inkMargin(0.0, 640.0, 70.0, 0.0));
+        box.SetSize(new Vector2(1040.0, 50.0));
+        box.SetVisible(false);
+
+        let bg: ref<inkRectangle> = new inkRectangle();
+        bg.SetAnchor(inkEAnchor.Fill);
+        bg.SetTintColor(new HDRColor(0.02, 0.02, 0.03, 1.0));
+        bg.SetOpacity(0.92);
+        bg.Reparent(box);
+        let border: ref<GRBorder> = new GRBorder();
+        border.SetAnchor(inkEAnchor.Fill);
+        border.SetThickness(2.0);
+        border.SetTintColor(new HDRColor(0.4, 0.45, 0.5, 1.0));
+        border.Reparent(box);
+
+        let text: ref<inkText> = this.NewText(27, GRHud.White(), n"Medium");
+        text.SetAnchor(inkEAnchor.TopLeft);
+        text.SetMargin(new inkMargin(16.0, 12.0, 16.0, 12.0));
+        text.SetWrappingAtPosition(995.0);
+        text.SetText("");
+        text.Reparent(box);
+
+        box.Reparent(slot);
+        this.m_districtBox = box;
+        this.m_districtText = text;
+        return true;
+    }
+
+    // Throttled to once a second (Tick itself runs every 0.1-0.25s) since GetDistrictChain() walks the
+    // district tree and there is no need to re-check that every single tick.
+    private func CheckDistrictChange() {
+        let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
+        if !IsDefined(settings) || !settings.debugOnScreen || !settings.debugOnScreenCampaign {
+            if IsDefined(this.m_districtBox) {
+                this.m_districtBox.SetVisible(false);
+            }
+            return;
+        }
+        let now: Float = EngineTime.ToFloat(GameInstance.GetSimTime(this.GetGameInstance()));
+        if now - this.m_districtCheckAt < 1.0 {
+            return;
+        }
+        this.m_districtCheckAt = now;
+        let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
+        if !IsDefined(spawner) || !this.EnsureDistrictPanel() {
+            return;
+        }
+        let chain: String = spawner.GetDistrictChain();
+        this.m_districtText.SetText(chain);
+        this.m_districtBox.SetVisible(StrLen(chain) > 0);
+        if StrLen(chain) > 0 {
+            let textH: Float = this.m_districtText.GetDesiredSize().Y;
+            this.m_districtBox.SetSize(new Vector2(1040.0, MaxF(50.0, textH + 24.0)));
         }
     }
 

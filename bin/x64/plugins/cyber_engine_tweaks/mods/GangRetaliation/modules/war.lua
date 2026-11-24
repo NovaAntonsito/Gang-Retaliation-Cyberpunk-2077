@@ -57,6 +57,25 @@ function War.init(campaign, list, known)
             end
         end
     end
+    -- w.order is persisted in the save, and up to here only ever grows by appending newly-discovered
+    -- keys - a district's position otherwise stays wherever it happened to land the first time it was
+    -- ever seen, even after GetAllDistricts() starts returning a different, deliberately chosen order
+    -- (region/column layout on the Territory screen - Menu.reds buckets columns by first-seen region
+    -- index mod 4). Re-sort w.order to match this call's incoming list exactly, every time, so the
+    -- display order is always whatever the current code produces instead of being locked in by
+    -- whichever order things were historically first discovered in a given save.
+    local rank = {}
+    local nextRank = 0
+    for entry in string.gmatch(list or "", "[^;]+") do
+        local key = string.match(entry, "^([^|]*)|")
+        if key and not rank[key] then
+            nextRank = nextRank + 1
+            rank[key] = nextRank
+        end
+    end
+    table.sort(w.order, function(a, b)
+        return (rank[a] or math.huge) < (rank[b] or math.huge)
+    end)
 end
 
 function War.owner(district)
