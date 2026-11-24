@@ -5,38 +5,17 @@
 ### English
 
 #### Fixed
-- A fleeing NPC could get interrupted mid-escape every few seconds and visibly double back toward you - the periodic "keep fleeing" refresh now only kicks back in once they've actually gone idle, instead of restarting the flee reaction on a timer regardless.
-- A Nemesis knocked out or killed right as an NCPD/Barghest raid ends could still get the "shot their way out" escape rumor instead of being recorded as your kill - the raid-end check now accounts for a death still waiting out its decapitation-confirmation window.
-- Vehicle ambushes can now be placed in the Badlands (including North Badlands and South Badlands) even with no traffic nearby to anchor to - it's open enough that the rooftop risk the no-traffic fallback normally guards against doesn't apply there.
-- The Wraiths' Badlands territory now shows up in Territory (grouped as **Eastern Badlands**: Red Peaks, Rocky Ridge, Sierra Sonora, Vasquez Pass; and **Southern Badlands**: Biotechnica Flats, Jackson Plains, Laguna Bend, Las Palapas Motel, Poppy Farm), and raids/ambushes scoped to "a gang with a foothold in your district" can target the Wraiths in exactly those neighborhoods - the vanilla game never gave any Badlands district any gang-affiliation data the way it does the city districts, so this is wired in directly for this specific, verified list.
-
-### Español
-
-#### Arreglado
-- Un NPC huyendo podía ser interrumpido a mitad de la huida cada pocos segundos y visiblemente dar la vuelta hacia ti - el refuerzo periódico de "seguir huyendo" ahora solo vuelve a activarse una vez que de verdad quedó quieto, en vez de reiniciar la reacción de huida con un temporizador sin importar si seguía huyendo bien.
-- Un Némesis noqueado o matado justo cuando termina una redada de la NCPD/Barghest igual podía recibir el rumor de "se disparó para escapar" en vez de registrarse como tu muerte - el chequeo de fin de redada ahora tiene en cuenta una muerte que todavía está esperando su ventana de confirmación por decapitación.
-- Ahora se puede generar una emboscada en vehículo en las Badlands aunque no haya tráfico cerca para anclarla - son lo bastante abiertas como para que no aplique el riesgo de azotea que ese respaldo evita en el resto del mapa.
-- El territorio de los Wraiths en las Badlands ahora aparece en Territorio (agrupado como **Eastern Badlands**: Red Peaks, Rocky Ridge, Sierra Sonora, Vasquez Pass; y **Southern Badlands**: Biotechnica Flats, Jackson Plains, Laguna Bend, Las Palapas Motel, Poppy Farm), y las redadas/emboscadas limitadas a "una banda con pie en tu distrito" ya pueden apuntar a los Wraiths en esos vecindarios exactos - el juego base nunca le dio a ningún distrito de las Badlands datos de afiliación de banda como sí hace con los distritos de la ciudad, así que esto se conecta directamente para esta lista específica ya verificada.
-
-## [1.5.5] - 2026-11-22
-
-### English
-
-#### Fixed
-- A decapitation that lands right after the kill, or on a Nemesis who is already down, now confirms the death for good: the Nemesis does not come back and the "For good this time" message shows. Thanks to **Aephiex** for finding the problem and writing the fix.
 - Boss weapons stored in your stash now show in the ARSENAL (marked IN THE STASH; open and close the stash once to register them). Take them out to use them in Augment.
 - Hunt zones no longer land underground: the hunt point is checked against the surface (a point with a floor or structure more than 6 m above it is discarded and another is picked; if the ground isn't loaded yet, it is checked again when you get within 200 m), and the pin and the target appear at surface level.
 - The GANG RETALIATION map filter checkbox now actually controls the bounty search-zone circle: it used to share a marker variant with a lot of unrelated game mappins, so (un)checking it did nothing to the circle, and unchecking every box could still leave other mods' pins hidden.
 - History and Gang History now list events newest first, with no redundant trailing "Now" line (the GANGS panel already shows the current day at the top).
-- A disarmed Nemesis fleeing from you is no longer blocked by the raid "can't flee" rule, and a disarmed/dismembered Nemesis found hiding no longer gets dragged back into a pointless fight. A self-heal injector being misread as a weapon could cause the first of these; fixed too.
-- NPCs that should quietly disappear after fleeing out of sight (not ones you actually fought) could fail to actually despawn; fixed.
-- Raids near V now only target a gang that actually has a foothold in your current district - a Barghest raid in Dogtown can no longer come after, say, a Maelstrom Nemesis with no presence there.
-- Vehicle ambushes no longer spawn a car somewhere with no real road (a rooftop, for instance) when there's no traffic nearby to anchor the spawn to - falls back to an on-foot ambush instead.
+- Raids near V now only target a gang that actually has a foothold in your current district - a Barghest raid in Dogtown can no longer come after, say, a Maelstrom Nemesis with no presence there. The Wraiths' Badlands territory is wired into this too, for a verified list of real neighborhoods now shown in Territory (grouped as **Eastern Badlands**: Red Peaks, Rocky Ridge, Sierra Sonora, Vasquez Pass; and **Southern Badlands**: Biotechnica Flats, Jackson Plains, Laguna Bend, Las Palapas Motel, Poppy Farm) - the vanilla game never gave any Badlands district gang-affiliation data the way it does the city districts, so this is wired in directly.
+- Vehicle ambushes no longer spawn a car somewhere with no real road (a rooftop, for instance) when there's no traffic nearby to anchor the spawn to - falls back to an on-foot ambush instead, except in the Badlands, which is open enough that a car ambush is placed there anyway.
 - Intel Shards picked up off a downed gang member could end up stuck in your inventory instead of vanishing on pickup like they should; a periodic check now clears out any that slip through.
 - A fleeing NPC (Nemesis or not) could finish playing out their initial "run away" reaction and then just stand frozen in place instead of continuing to flee; that reaction now gets periodically refreshed so they keep running until they actually lose you or are caught.
+- A Nemesis knocked out or killed right as an NCPD/Barghest raid ends could still get the "shot their way out" escape rumor instead of being recorded as your kill - the raid-end check now accounts for a death still waiting out its decapitation-confirmation window.
 
 #### Changed
-- **History migration from the old standalone GangRetaliationHistory mod no longer needs a manual file copy.** If you still have that mod installed (version 1.2.1 or later) alongside this one, its log is pulled in automatically through a direct mod-to-mod call the first time both are loaded together - nothing to copy by hand. A manual `data/legacy_history.log` copy still works as a fallback for anyone on an older standalone-mod version. A new **Reset History Import** button (CET debug window, next to Clear Log) retries the import on demand, for anyone who had trouble the first time.
 - Contracts are paid on any takedown by you (knockout or kill). The old "make sure they don't come back" condition is gone. Boss contracts still need the Boss to fall inside their stronghold.
 
 #### Added
@@ -51,7 +30,7 @@
 - The scanner shows a Nemesis's traits in their own TRAITS section.
 - Every Nemesis who goes down, knocked out or killed, now carries an Intel Shard.
 - A rare surprise from Rogue: once in a while one of her contracts comes marked **SPECIAL**. Complete every optional objective on it and she has something for you.
-- **History merged into the GANGS screen.** The standalone Gang Retaliation History add-on's screen is replaced by two new sub-tabs on the GANGS detail panel: **History** (a selected Nemesis's own events) and **Gang History** (every event tagged to their whole gang). If you had the old add-on installed, its log is migrated into this mod automatically the first time you load with this version - nothing to do by hand.
+- **History merged into the GANGS screen.** The standalone Gang Retaliation History add-on's screen is replaced by two new sub-tabs on the GANGS detail panel: **History** (a selected Nemesis's own events) and **Gang History** (every event tagged to their whole gang). If you had the old add-on installed, its log is migrated into this mod automatically the first time you load with this version - nothing to do by hand. A **Reset History Import** debug button (CET window, next to Clear Log) retries that migration on demand, for anyone who runs into trouble.
 - History and Information now show a bounty badge on a Nemesis with an open contract; clicking it jumps straight to that contract in the Bounty Board.
 - GANGS and Bounty Board each have a button next to their own title to jump straight to the other one.
 - **Clear Log** debug button (CET overlay window, next to "Clear campaign"): permanently deletes the active campaign's history. Does not touch other campaigns' saved history.
@@ -60,20 +39,17 @@
 ### Español
 
 #### Arreglado
-- Una decapitación que llega justo después de la muerte, o sobre un Némesis que ya está caído, ahora confirma la muerte para siempre: el Némesis no vuelve y sale el mensaje de que cayó para siempre. Gracias a **Aephiex** por encontrar el problema y escribir el arreglo.
 - Las armas de Jefe que guardas en el alijo ahora aparecen en el ARSENAL (marcadas EN EL ALIJO; abre y cierra el alijo una vez para registrarlas). Sácalas del alijo para usarlas en el Aumento.
 - Las zonas de caza ya no quedan bajo tierra: el punto de caza se comprueba contra la superficie (si encima hay un piso o una estructura a más de 6 m, se descarta y se elige otro; si el suelo todavía no cargó, se vuelve a comprobar cuando estés a menos de 200 m), y el pin y el objetivo aparecen a nivel de superficie.
 - La casilla del filtro de mapa GANG RETALIATION ahora sí controla el círculo de la zona de búsqueda de recompensas: antes compartía variante de marcador con muchísimos otros mappins ajenos al mod, así que (des)tildarla no le hacía nada al círculo, y destildar todas las casillas igual podía dejar ocultos pins de otros mods.
 - Historial e Historial de Banda ahora listan los eventos de más nuevo a más viejo, sin la línea final redundante "Now" (el panel de GANGS ya muestra el día actual arriba).
-- Un Némesis desarmado que huye de ti ya no queda bloqueado por la regla de "no puede huir" de las redadas, y un Némesis desarmado/desmembrado encontrado escondido ya no es arrastrado de vuelta a una pelea sin sentido. Un inyector de autocuración mal interpretado como arma podía causar lo primero; también arreglado.
-- Los NPCs que deberían desaparecer en silencio tras huir de la vista (no los que de verdad peleaste) podían no llegar a despawnear; arreglado.
-- Las redadas cerca de V ahora solo apuntan a una banda que de verdad tiene pie en tu distrito actual - una redada de Barghest en Dogtown ya no puede ir contra, por ejemplo, un Némesis de Maelstrom sin presencia ahí.
-- Las emboscadas en vehículo ya no aparecen en un lugar sin camino real (una azotea, por ejemplo) cuando no hay tráfico cerca para anclar la aparición - en ese caso cae a una emboscada a pie.
+- Las redadas cerca de V ahora solo apuntan a una banda que de verdad tiene pie en tu distrito actual - una redada de Barghest en Dogtown ya no puede ir contra, por ejemplo, un Némesis de Maelstrom sin presencia ahí. El territorio de los Wraiths en las Badlands también se conecta a esto, para una lista verificada de vecindarios reales que ahora se ve en Territorio (agrupada como **Eastern Badlands**: Red Peaks, Rocky Ridge, Sierra Sonora, Vasquez Pass; y **Southern Badlands**: Biotechnica Flats, Jackson Plains, Laguna Bend, Las Palapas Motel, Poppy Farm) - el juego base nunca le dio a ningún distrito de las Badlands datos de afiliación de banda como sí hace con los distritos de la ciudad, así que esto se conecta directamente.
+- Las emboscadas en vehículo ya no aparecen en un lugar sin camino real (una azotea, por ejemplo) cuando no hay tráfico cerca para anclar la aparición - en ese caso cae a una emboscada a pie, excepto en las Badlands, que son lo bastante abiertas como para igual colocar ahí una emboscada en vehículo.
 - Los Shards de Intel recogidos de un pandillero caído podían quedar atascados en el inventario en vez de desaparecer al recogerlos como deberían; un chequeo periódico ahora retira los que se cuelan.
 - Un NPC huyendo (Némesis o no) podía terminar su reacción inicial de "huir" y quedarse parado en el lugar en vez de seguir huyendo; esa reacción ahora se refuerza periódicamente para que siga corriendo hasta que de verdad te pierda de vista o lo atrapes.
+- Un Némesis noqueado o matado justo cuando termina una redada de la NCPD/Barghest igual podía recibir el rumor de "se disparó para escapar" en vez de registrarse como tu muerte - el chequeo de fin de redada ahora tiene en cuenta una muerte que todavía está esperando su ventana de confirmación por decapitación.
 
 #### Cambiado
-- **La migración del historial del viejo mod independiente GangRetaliationHistory ya no necesita copiar un archivo a mano.** Si todavía tienes ese mod instalado (versión 1.2.1 o más nueva) junto a este, su registro se trae automáticamente mediante una llamada directa entre mods la primera vez que ambos cargan juntos - nada que copiar a mano. Una copia manual de `data/legacy_history.log` sigue funcionando como respaldo para quien esté en una versión más vieja del mod independiente. Un nuevo botón **Reset History Import** (ventana de depuración de CET, junto a Clear Log) reintenta la importación cuando haga falta, para quien haya tenido problemas la primera vez.
 - Los contratos se cobran con cualquier derribo hecho por ti (noqueo o muerte). Se quitó la condición de "que no vuelva". Los contratos de Jefe siguen exigiendo que el Jefe caiga dentro de su guarida.
 
 #### Añadido
@@ -88,7 +64,7 @@
 - El escáner muestra los rasgos del Némesis en su propia sección RASGOS.
 - Todo Némesis que cae, noqueado o muerto, ahora lleva un Shard de intel.
 - Una rara sorpresa de Rogue: de vez en cuando uno de sus contratos viene marcado como **ESPECIAL**. Completa todos los opcionales y ella tiene algo para ti.
-- **Historial fusionado a la pantalla GANGS.** La pantalla del add-on independiente Gang Retaliation History se reemplaza por dos pestañas nuevas en el panel de detalle de GANGS: **Historial** (los eventos propios del Némesis seleccionado) y **Historial de Banda** (todo evento marcado con toda su banda). Si tenías el add-on viejo instalado, su registro se migra a este mod automáticamente la primera vez que cargues con esta versión - no hay que hacer nada a mano.
+- **Historial fusionado a la pantalla GANGS.** La pantalla del add-on independiente Gang Retaliation History se reemplaza por dos pestañas nuevas en el panel de detalle de GANGS: **Historial** (los eventos propios del Némesis seleccionado) y **Historial de Banda** (todo evento marcado con toda su banda). Si tenías el add-on viejo instalado, su registro se migra a este mod automáticamente la primera vez que cargues con esta versión - no hay que hacer nada a mano. Un botón de depuración **Reset History Import** (ventana de CET, junto a Clear Log) reintenta esa migración cuando haga falta, para quien tenga algún problema.
 - Historial e Información ahora muestran una insignia de recompensa en un Némesis con contrato abierto; al hacerle clic se salta directo a ese contrato en el Bounty Board.
 - GANGS y Bounty Board tienen cada uno un botón junto a su propio título para saltar directo al otro.
 - Botón de debug **Clear Log** (ventana de CET, junto a "Clear campaign"): borra permanentemente el historial de la campaña activa. No toca el historial guardado de otras campañas.
