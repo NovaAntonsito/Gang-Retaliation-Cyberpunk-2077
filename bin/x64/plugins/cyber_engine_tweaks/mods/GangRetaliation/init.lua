@@ -11,7 +11,7 @@ local CyberLooks = require("modules/cyberlooks")
 
 -- Keep in sync with build/build_release.py's VERSION whenever it changes (that script's check_version()
 -- enforces this, along with CHANGELOG.md/README.md/Localization.reds's "Gang Retaliation vX.X.X" strings).
-local VERSION = "1.5.5"
+local VERSION = "1.5.6"
 
 local GR = {
     dev = true, -- GR_DEV_FLAG
@@ -976,6 +976,18 @@ end
 
 local raidBounty = { 1000, 2500, 5000 }
 
+-- A knockout death sits in the spawner's death queue for up to corpseRemovalSeconds (see
+-- deathResolutionDelaySeconds) before processDeaths() flips n.status to "dead" - giving a trailing
+-- decapitation time to upgrade it to "confirmed". A raid that ends inside that window (e.g. the NCPD
+-- mops up right after the Nemesis goes down) would otherwise still see n.status as alive and wrongly
+-- fire the "shot their way out" escape rumor on someone who is, in fact, already dead.
+local function hasPendingDeath(spawner, nemesisId)
+    for i = spawner:GetDeathCount() - 1, 0, -1 do
+        if spawner:GetDeath(i) == nemesisId then return true end
+    end
+    return false
+end
+
 local function checkRaid()
     local spawner = getSpawner()
     if not GR.raidId or not spawner or spawner:IsRaidActive() then return end
@@ -1000,7 +1012,7 @@ local function checkRaid()
             debugLog("Redada: recompensa NCPD " .. amount .. (deducted and " (con descuento)" or ""))
         end
     end
-    if n and n.status ~= "dead" then
+    if n and n.status ~= "dead" and not hasPendingDeath(spawner, n.id) then
         Hierarchy.addRenown(n, 2)
         Store.dirty = true
         if barghest then
@@ -1768,6 +1780,19 @@ end)
 registerForEvent("onOverlayOpen", function() GR.overlayOpen = true end)
 registerForEvent("onOverlayClose", function() GR.overlayOpen = false end)
 
+-- Small always-on-top overlay, drawn just above whichever debug window is currently open, showing the
+-- player's full current district parent chain (GRSpawner.GetDistrictChain()) - handy for checking the
+-- real District.ParentDistrict() hierarchy live without digging through WolvenKit each time.
+local function drawDistrictOverlay(x, y)
+    local sp = getSpawner()
+    if not sp then return end
+    ImGui.SetNextWindowPos(x, math.max(0, y - 50), ImGuiCond.Always)
+    if ImGui.Begin("GR - District") then
+        ImGui.Text(sp:GetDistrictChain())
+    end
+    ImGui.End()
+end
+
 local function drawReleaseWindow()
     if ImGui.Begin("Gang Retaliation v" .. VERSION) then
         if GR.campaignId == 0 then
@@ -1783,7 +1808,9 @@ local function drawReleaseWindow()
             drawHomes()
         end
     end
+    local x, y = ImGui.GetWindowPos()
     ImGui.End()
+    drawDistrictOverlay(x, y)
 end
 
 registerForEvent("onDraw", function()
@@ -2123,7 +2150,9 @@ registerForEvent("onDraw", function()
             if GR.lastAction ~= "" then ImGui.TextDisabled(GR.lastAction) end
         end
     end
+    local devX, devY = ImGui.GetWindowPos()
     ImGui.End()
+    drawDistrictOverlay(devX, devY)
 end)
 
 return GR

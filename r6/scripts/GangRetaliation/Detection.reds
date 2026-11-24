@@ -866,12 +866,21 @@ public class GRDetection extends ScriptableSystem {
                         candidate.nativeFleePulse += 1.0;
                         if candidate.nativeFleePulse >= 6.0 {
                             candidate.nativeFleePulse = 0.0;
-                            let puppet: ref<NPCPuppet> = npc as NPCPuppet;
-                            if IsDefined(puppet) && IsDefined(player) {
-                                let reactions: ref<ReactionManagerComponent> = puppet.GetStimReactionComponent();
-                                if IsDefined(reactions) {
-                                    reactions.GRForceFlee(player);
-                                    this.Debug("Huida nativa: refuerzo periodico para seguir huyendo (" + this.TagCandidate(candidate) + ")");
+                            // 2026-11-23: re-triggering GRForceFlee unconditionally every pulse restarts the
+                            // Flee reaction from scratch (fresh AIReactionData, re-queued stim event) even
+                            // while the NPC is still mid-flee and doing fine on its own - that repeated
+                            // restart is what was making them visibly bounce to a new far point and double
+                            // back toward the player every few seconds. Only resume them if the high-level
+                            // state has actually dropped out of Fear (i.e. the one-shot reaction already
+                            // ran out and they are idling, the original freeze-mid-flee bug this is for).
+                            if !Equals(npc.GetHighLevelStateFromBlackboard(), gamedataNPCHighLevelState.Fear) {
+                                let puppet: ref<NPCPuppet> = npc as NPCPuppet;
+                                if IsDefined(puppet) && IsDefined(player) {
+                                    let reactions: ref<ReactionManagerComponent> = puppet.GetStimReactionComponent();
+                                    if IsDefined(reactions) {
+                                        reactions.GRForceFlee(player);
+                                        this.Debug("Huida nativa: refuerzo periodico para seguir huyendo (" + this.TagCandidate(candidate) + ")");
+                                    }
                                 }
                             }
                         }

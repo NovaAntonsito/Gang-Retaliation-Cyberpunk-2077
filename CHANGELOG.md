@@ -1,5 +1,23 @@
 # Changelog - Gang Retaliation
 
+## [1.5.6] - 2026-11-23
+
+### English
+
+#### Fixed
+- A fleeing NPC could get interrupted mid-escape every few seconds and visibly double back toward you - the periodic "keep fleeing" refresh now only kicks back in once they've actually gone idle, instead of restarting the flee reaction on a timer regardless.
+- A Nemesis knocked out or killed right as an NCPD/Barghest raid ends could still get the "shot their way out" escape rumor instead of being recorded as your kill - the raid-end check now accounts for a death still waiting out its decapitation-confirmation window.
+- Vehicle ambushes can now be placed in the Badlands (including North Badlands and South Badlands) even with no traffic nearby to anchor to - it's open enough that the rooftop risk the no-traffic fallback normally guards against doesn't apply there.
+- The Wraiths' Badlands territory now shows up in Territory (grouped as **Eastern Badlands**: Red Peaks, Rocky Ridge, Sierra Sonora, Vasquez Pass; and **Southern Badlands**: Biotechnica Flats, Jackson Plains, Laguna Bend, Las Palapas Motel, Poppy Farm), and raids/ambushes scoped to "a gang with a foothold in your district" can target the Wraiths in exactly those neighborhoods - the vanilla game never gave any Badlands district any gang-affiliation data the way it does the city districts, so this is wired in directly for this specific, verified list.
+
+### Español
+
+#### Arreglado
+- Un NPC huyendo podía ser interrumpido a mitad de la huida cada pocos segundos y visiblemente dar la vuelta hacia ti - el refuerzo periódico de "seguir huyendo" ahora solo vuelve a activarse una vez que de verdad quedó quieto, en vez de reiniciar la reacción de huida con un temporizador sin importar si seguía huyendo bien.
+- Un Némesis noqueado o matado justo cuando termina una redada de la NCPD/Barghest igual podía recibir el rumor de "se disparó para escapar" en vez de registrarse como tu muerte - el chequeo de fin de redada ahora tiene en cuenta una muerte que todavía está esperando su ventana de confirmación por decapitación.
+- Ahora se puede generar una emboscada en vehículo en las Badlands aunque no haya tráfico cerca para anclarla - son lo bastante abiertas como para que no aplique el riesgo de azotea que ese respaldo evita en el resto del mapa.
+- El territorio de los Wraiths en las Badlands ahora aparece en Territorio (agrupado como **Eastern Badlands**: Red Peaks, Rocky Ridge, Sierra Sonora, Vasquez Pass; y **Southern Badlands**: Biotechnica Flats, Jackson Plains, Laguna Bend, Las Palapas Motel, Poppy Farm), y las redadas/emboscadas limitadas a "una banda con pie en tu distrito" ya pueden apuntar a los Wraiths en esos vecindarios exactos - el juego base nunca le dio a ningún distrito de las Badlands datos de afiliación de banda como sí hace con los distritos de la ciudad, así que esto se conecta directamente para esta lista específica ya verificada.
+
 ## [1.5.5] - 2026-11-22
 
 ### English

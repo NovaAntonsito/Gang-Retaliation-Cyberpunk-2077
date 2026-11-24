@@ -34,6 +34,39 @@ public class GRWar extends ScriptableSystem {
         return StrLen(name) > 0 ? name : district.EnumName();
     }
 
+    // The vanilla game never tags any Badlands district with a gang affiliation the way it does the city
+    // gangs - Wraiths territory isn't modeled through District.Gangs() at all, so the normal walk in
+    // GetAllDistricts()/GRSpawner.GetDistrictGangs() always comes up empty there. Rather than a blanket
+    // "anything named Badlands" match, this is curated to an exact, user-approved list of real
+    // neighborhoods the player confirmed in-game (district key -> display label -> region -> gang) -
+    // deliberately leaves out plain Badlands/NorthBadlands/SouthBadlands themselves and any unlisted
+    // sub-area (e.g. Yucca, Dry Creek, Spaceport). The "Eastern/Southern Badlands" region labels are this
+    // mod's own grouping for display purposes only - they don't correspond to any real TweakDB district;
+    // the real parent of Poppy Farm, for instance, is SouthBadlands, not Badlands.
+    private static func CuratedBadlandsDistricts() -> array<String> {
+        return [
+            "Badlands_RedPeaks|Red Peaks|Eastern Badlands|Wraiths",
+            "Badlands_RockyRidge|Rocky Ridge|Eastern Badlands|Wraiths",
+            "Badlands_SierraSonora|Sierra Sonora|Eastern Badlands|Wraiths",
+            "Badlands_VasquezPass|Vasquez Pass|Eastern Badlands|Wraiths",
+            "Badlands_BiotechnicaFlats|Biotechnica Flats|Southern Badlands|Wraiths",
+            "Badlands_JacksonPlains|Jackson Plains|Southern Badlands|Wraiths",
+            "Badlands_LagunaBend|Laguna Bend|Southern Badlands|Wraiths",
+            "Badlands_LasPalapas|Las Palapas Motel|Southern Badlands|Wraiths",
+            "SouthBadlands_PoppyFarm|Poppy Farm|Southern Badlands|Wraiths"
+        ];
+    }
+
+    public static func IsCuratedWraithsDistrict(name: String) -> Bool {
+        for row in GRWar.CuratedBadlandsDistricts() {
+            let parts: array<String> = StrSplit(row, "|");
+            if ArraySize(parts) > 0 && Equals(parts[0], name) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public func GetAllDistricts() -> String {
         let records: array<ref<TweakDBRecord>> = TweakDBInterface.GetRecords(n"District");
         let parents: array<TweakDBID>;
@@ -43,7 +76,8 @@ public class GRWar extends ScriptableSystem {
                 ArrayPush(parents, district.ParentDistrict().GetID());
             }
         }
-        let result: String = "";
+        let rows: array<String>;
+        let sortKeys: array<String>;
         for record in records {
             let district: ref<District_Record> = record as District_Record;
             if IsDefined(district) {
@@ -58,17 +92,48 @@ public class GRWar extends ScriptableSystem {
                 while IsDefined(source) && source.GetGangsCount() == 0 {
                     source = source.ParentDistrict();
                 }
-                if isNeighborhood && IsDefined(source) {
+                let list: String = "";
+                if IsDefined(source) {
                     let gangs: array<wref<Affiliation_Record>>;
                     source.Gangs(gangs);
-                    let list: String = "";
                     for gang in gangs {
                         list += (StrLen(list) > 0 ? "," : "") + NameToString(gang.EnumName());
                     }
-                    result += (StrLen(result) > 0 ? ";" : "") + district.EnumName() + "|" + this.DistrictLabel(district)
-                        + "|" + this.DistrictLabel(top) + "|" + list;
+                }
+                if isNeighborhood && StrLen(list) > 0 {
+                    ArrayPush(rows, district.EnumName() + "|" + this.DistrictLabel(district) + "|" + this.DistrictLabel(top) + "|" + list);
+                    ArrayPush(sortKeys, top.EnumName());
                 }
             }
+        }
+        for row in GRWar.CuratedBadlandsDistricts() {
+            let parts: array<String> = StrSplit(row, "|");
+            ArrayPush(rows, row);
+            ArrayPush(sortKeys, ArraySize(parts) > 2 ? parts[2] : "");
+        }
+        // Region/column order on the Territory screen (Menu.reds) follows first-appearance order in this
+        // string, not TweakDB's native GetRecords() enumeration (which doesn't match any sensible map
+        // layout) - reorder explicitly to the user's chosen left-to-right sequence instead. Anything not
+        // in this list (a district this mod doesn't otherwise expect) still gets appended at the end
+        // rather than silently dropped.
+        let priority: array<String> = ["Watson", "Westbrook", "Heywood", "SantoDomingo", "Pacifica", "Dogtown",
+            "Eastern Badlands", "Southern Badlands"];
+        let result: String = "";
+        for region in priority {
+            let i: Int32 = 0;
+            while i < ArraySize(rows) {
+                if Equals(sortKeys[i], region) {
+                    result += (StrLen(result) > 0 ? ";" : "") + rows[i];
+                }
+                i += 1;
+            }
+        }
+        let i: Int32 = 0;
+        while i < ArraySize(rows) {
+            if !ArrayContains(priority, sortKeys[i]) {
+                result += (StrLen(result) > 0 ? ";" : "") + rows[i];
+            }
+            i += 1;
         }
         return result;
     }
