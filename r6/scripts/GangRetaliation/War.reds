@@ -138,6 +138,37 @@ public class GRWar extends ScriptableSystem {
         return result;
     }
 
+    // Dev/debug tool: every District_Record in the game, one CSV row each, root ancestor in column 1 down
+    // to that district itself in the last column (e.g. "Watson,ArasakaWaterfront,KonpekiPlaza"). Meant to
+    // be exported to a file from the CET side and opened in Excel/Sheets, to manually review which named
+    // interiors/sub-areas exist and decide on an ambush/raid exclusion list (see NOTES.md open item on
+    // named-interior exclusion) - not used by any gameplay logic itself.
+    public func ExportAllDistrictChains() -> String {
+        let records: array<ref<TweakDBRecord>> = TweakDBInterface.GetRecords(n"District");
+        let result: String = "";
+        for record in records {
+            let district: ref<District_Record> = record as District_Record;
+            if IsDefined(district) {
+                let names: array<String>;
+                let depth: Int32 = 0;
+                let cur: wref<District_Record> = district;
+                while IsDefined(cur) && depth < 8 {
+                    ArrayPush(names, cur.EnumName());
+                    cur = cur.ParentDistrict();
+                    depth += 1;
+                }
+                let row: String = "";
+                let i: Int32 = ArraySize(names) - 1;
+                while i >= 0 {
+                    row += (StrLen(row) > 0 ? "," : "") + names[i];
+                    i -= 1;
+                }
+                result += row + "\n";
+            }
+        }
+        return result;
+    }
+
     public func GetCurrentDistrict() -> String {
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
         if !IsDefined(player) {

@@ -11,7 +11,7 @@ local CyberLooks = require("modules/cyberlooks")
 
 -- Keep in sync with build/build_release.py's VERSION whenever it changes (that script's check_version()
 -- enforces this, along with CHANGELOG.md/README.md/Localization.reds's "Gang Retaliation vX.X.X" strings).
-local VERSION = "1.5.6"
+local VERSION = "1.5.7"
 
 local GR = {
     dev = true, -- GR_DEV_FLAG
@@ -486,16 +486,19 @@ local function launchAmbush(n, forceVehicle)
     local useVehicle = forceVehicle or math.random(100) <= Vehicles.chancePercent
     local vehicle = useVehicle and Vehicles.pick(n.gang) or nil
     local started = vehicle and spawner:StartVehicleAmbush(n.id, n.recordID, n.appearance or "", escorts, line, speaker, vehicle)
+    local vehicleFailReason = (vehicle and not started) and tostring(spawner:GetLastSpawnFailReason()) or nil
     if started then
         print(string.format("[GangRetaliation] Transporte #%d (%s): vehiculo %s", n.id, n.gang, vehicle))
     else
         if not spawner:StartAmbush(n.id, n.recordID, n.appearance or "", escorts, line, speaker) then
-            print(string.format("[GangRetaliation] Transporte #%d (%s): ninguno, no se pudo generar (bloqueo: %s)",
-                n.id, n.gang, tostring(spawner:GetAmbushBlocker())))
-            return "spawn failed"
+            local reason = tostring(spawner:GetLastSpawnFailReason())
+            print(string.format("[GangRetaliation] Transporte #%d (%s): ninguno, no se pudo generar (%s)",
+                n.id, n.gang, reason))
+            return "spawn failed: " .. reason
         end
-        print(string.format("[GangRetaliation] Transporte #%d (%s): a pie (%s)", n.id, n.gang,
-            vehicle and ("fallo el vehiculo " .. vehicle) or "tirada de vehiculo fallida"))
+        local why = vehicle and ("vehicle " .. vehicle .. " failed: " .. vehicleFailReason) or "vehicle roll failed"
+        print(string.format("[GangRetaliation] Transporte #%d (%s): a pie (fallback de %s)", n.id, n.gang, why))
+        debugLog(string.format("Emboscada: #%d a pie (fallback de %s)", n.id, why))
     end
 
     n.ambushes = (n.ambushes or 0) + 1
@@ -518,17 +521,18 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
     if GR.pendingAmbush then return "sms sent, waiting" end
 
     local campaign = Store.campaign(GR.campaignId)
+
+    local blocker = spawner:GetAmbushBlocker()
+    if blocker ~= "" then return "blocked: " .. blocker end
+
     if not force then
+        local safe, distance = Ambush.nearHome(campaign)
+        if safe then return string.format("near home (%.0f m)", distance) end
         local waited = os.time() - (campaign.lastAmbush or 0)
         if waited < settings.ambushCooldownMinutes * 60 then return "cooldown" end
         local heat = spawner:GetHeatFactor()
         if math.random(100) > settings.ambushChancePercent * heat then return "roll failed" end
-        local safe, distance = Ambush.nearHome(campaign)
-        if safe then return string.format("near home (%.0f m)", distance) end
     end
-
-    local blocker = spawner:GetAmbushBlocker()
-    if blocker ~= "" then return "blocked: " .. blocker end
 
     local warSys = getSystem("GangRetaliation.GRWar")
     local districtGangs = (warSys and War.districtGangs(campaign, warSys:GetCurrentDistrict()))
@@ -554,6 +558,69 @@ local function tryAmbush(force, warnSeconds, forceVehicle)
     return "sms #" .. n.id .. ", ambush in " .. delay .. " s"
 end
 
+-- Vehicle-chase ambush: when V is already driving, GetAmbushBlocker() (and so tryAmbush) always bails
+-- out with "in vehicle" - this is the replacement for that case instead of just skipping the roll
+-- entirely. Shares tryAmbush's own settings/cooldown/chance roll and campaign.lastAmbush timer (the
+-- user's call: "no adjuster, it's part of the ambushes", not a separate frequency), so the two are
+-- naturally mutually exclusive via GetVehicleChaseBlocker()/GetAmbushBlocker() requiring opposite
+-- in-vehicle states. 2026-11-24, not yet confirmed in game - in particular whether a seated occupant
+-- actually opens fire from the moving vehicle without further setup.
+local function tryVehicleChase(force)
+    local settings = getSettings()
+    local spawner = getSpawner()
+    if not settings or not spawner then return "no systems" end
+    if not settings.enabled or (not force and not settings.ambushEnabled) then return "disabled" end
+
+    local campaign = Store.campaign(GR.campaignId)
+
+    local blocker = spawner:GetVehicleChaseBlocker()
+    if blocker ~= "" then return "blocked: " .. blocker end
+
+    if not force then
+        local safe, distance = Ambush.nearHome(campaign)
+        if safe then return string.format("near home (%.0f m)", distance) end
+        local waited = os.time() - (campaign.lastAmbush or 0)
+        if waited < settings.ambushCooldownMinutes * 60 then return "cooldown" end
+        local heat = spawner:GetHeatFactor()
+        if math.random(100) > settings.ambushChancePercent * heat then return "roll failed" end
+    end
+
+    local warSys = getSystem("GangRetaliation.GRWar")
+    local districtGangs = (warSys and War.districtGangs(campaign, warSys:GetCurrentDistrict()))
+        or Ambush.parseGangs(spawner:GetDistrictGangs())
+    local today = gameDay()
+    local n, resting = Ambush.pick(campaign.nemeses, districtGangs, not force, not force and today or nil, true)
+    for _, r in ipairs(resting) do
+        debugLog(string.format("Persecucion: %s descartado, escapo hace %.2f dias (espera %s)", labelOf(r), today - r.escapedDay, tostring(Ambush.escapeRestDays)))
+    end
+    if not n then return #resting > 0 and "all resting after escape" or "no living Nemesis" end
+
+    Store.ensureCampaign(GR.campaignId).lastAmbush = os.time()
+    Store.dirty = true
+
+    local speaker = fullName(n)
+    local line = text(Ambush.lineKey(n), "...")
+    pushTraits(n)
+    local vehicle = Vehicles.pick(n.gang)
+    local escorts = Ambush.escorts(n, settings.ambushMaxEscorts)
+    if not spawner:StartVehicleChase(n.id, n.recordID, n.appearance or "", escorts, line, speaker, vehicle) then
+        local reason = tostring(spawner:GetLastSpawnFailReason())
+        print(string.format("[GangRetaliation] Persecucion #%d (%s): no se pudo generar (%s)", n.id, n.gang, reason))
+        return "spawn failed: " .. reason
+    end
+
+    n.ambushes = (n.ambushes or 0) + 1
+    GR.encounterId = n.id
+    Store.dirty = true
+    do
+        local key = "GR-MsgVehicleChase"
+        local msg = string.format(text(key, "You've got a tail! %s has found you."), labelOf(n))
+        notify(msg)
+        History.record(key, { n.gang }, { n.name }, { labelOf(n) })
+    end
+    return "vehicle chase #" .. n.id .. " (" .. vehicle .. ")"
+end
+
 local function updatePendingAmbush()
     local pending = GR.pendingAmbush
     local spawner = getSpawner()
@@ -570,7 +637,7 @@ local function updatePendingAmbush()
     local blocker = spawner:GetAmbushBlocker()
 
     local result = blocker == "" and launchAmbush(n, pending.vehicle) or ("blocked: " .. blocker)
-    if result ~= "spawn failed" and blocker == "" then
+    if not result:match("^spawn failed") and blocker == "" then
         GR.pendingAmbush = nil
         debugLog("Emboscada anunciada: " .. result)
     elseif now > pending.giveUp then
@@ -641,7 +708,7 @@ local function tryGig(force)
                 local escorts = Ambush.escorts(n, math.min(1, settings.ambushMaxEscorts))
                 pushTraits(n)
                 if not spawner:StartReinforcement(n.id, n.recordID, n.appearance or "", escorts, line, speaker) then
-                    return "spawn failed"
+                    return "spawn failed: " .. tostring(spawner:GetLastSpawnFailReason())
                 end
                 n.gigs = (n.gigs or 0) + 1
                 GR.encounterId = n.id
@@ -686,7 +753,7 @@ local function tryExternalSquad()
     local escorts = Ambush.escorts(n, math.min(1, settings.ambushMaxEscorts))
     pushTraits(n)
     if not spawner:StartReinforcement(n.id, n.recordID, n.appearance or "", escorts, line, fullName(n)) then
-        return squad .. ": spawn failed"
+        return squad .. ": spawn failed: " .. tostring(spawner:GetLastSpawnFailReason())
     end
     n.gigs = (n.gigs or 0) + 1
     GR.encounterId = n.id
@@ -717,6 +784,24 @@ local function processAppearances()
         end
     end
     spawner:ClearAppearanceReports()
+end
+
+-- 2026-11-24, user's call: when a vehicle-chase car gets left 600m behind while still actively chasing,
+-- GRSpawner.EvadeVehicleChase() (Spawner.reds) despawns it immediately and queues the nemesis id here -
+-- same poll-then-clear pattern as processAppearances() above.
+local function processVehicleEvaded()
+    local spawner = getSpawner()
+    if not spawner or spawner:GetVehicleEvadedCount() == 0 then return end
+    for i = 0, spawner:GetVehicleEvadedCount() - 1 do
+        local n = findNemesis(spawner:GetVehicleEvadedId(i))
+        if n then
+            local key = "GR-MsgEvaded"
+            local msg = string.format(text(key, "%s was evaded, but they vow to get you next time."), labelOf(n))
+            notify(msg)
+            History.record(key, { n.gang }, { n.name }, { labelOf(n) })
+        end
+    end
+    spawner:ClearVehicleEvadedIds()
 end
 
 local function checkEncounter()
@@ -913,15 +998,17 @@ local function tryRaid(force)
     local settings = getSettings()
     local spawner = getSpawner()
     if not settings or not spawner or not settings.enabled then return "no systems" end
-    if not force then
-        if (settings.raidChancePercent or 0) <= 0 then return "disabled" end
-        if os.time() - (GR.lastRaid or 0) < 900 then return "cooldown" end
-        if math.random(100) > settings.raidChancePercent then return "roll failed" end
-        local safe, distance = Ambush.nearHome(Store.campaign(GR.campaignId))
-        if safe then return string.format("near home (%.0f m)", distance) end
-    end
+    if not force and (settings.raidChancePercent or 0) <= 0 then return "disabled" end
+
     local blocker = spawner:GetAmbushBlocker()
     if blocker ~= "" then return "blocked: " .. blocker end
+
+    if not force then
+        local safe, distance = Ambush.nearHome(Store.campaign(GR.campaignId))
+        if safe then return string.format("near home (%.0f m)", distance) end
+        if os.time() - (GR.lastRaid or 0) < 900 then return "cooldown" end
+        if math.random(100) > settings.raidChancePercent then return "roll failed" end
+    end
 
     local campaign = Store.campaign(GR.campaignId)
     local warSys = getSystem("GangRetaliation.GRWar")
@@ -955,7 +1042,7 @@ local function tryRaid(force)
 
     pushTraits(n)
     if not spawner:StartRaid(n.id, n.recordID, n.appearance or "", Ambush.escorts(n, settings.ambushMaxEscorts), fullName(n), Ambush.police(n)) then
-        return "spawn failed"
+        return "spawn failed: " .. tostring(spawner:GetLastSpawnFailReason())
     end
     GR.lastRaid = os.time()
     GR.raidId = n.id
@@ -1484,6 +1571,7 @@ local function update(delta)
         prof("checkEncounter", checkEncounter)
         prof("checkRaid", checkRaid)
         prof("processAppearances", processAppearances)
+        prof("processVehicleEvaded", processVehicleEvaded)
         prof("processReveals", processReveals)
 
         local det = getDetection()
@@ -1530,6 +1618,8 @@ local function update(delta)
         GR.ambushTimer = 0
         local ok, result = prof("tryAmbush", pcall, tryAmbush, false)
         debugLog("Emboscada: " .. tostring(result))
+        local okV, resultV = prof("tryVehicleChase", pcall, tryVehicleChase, false)
+        debugLog("Persecucion: " .. tostring(resultV))
         local okH, errH = prof("updateHierarchy", pcall, updateHierarchy)
         if not okH then print("[GangRetaliation] Error en jerarquia: " .. tostring(errH)) end
         local okS, resultS = prof("trySkirmish", pcall, trySkirmish, false)
@@ -1780,19 +1870,6 @@ end)
 registerForEvent("onOverlayOpen", function() GR.overlayOpen = true end)
 registerForEvent("onOverlayClose", function() GR.overlayOpen = false end)
 
--- Small always-on-top overlay, drawn just above whichever debug window is currently open, showing the
--- player's full current district parent chain (GRSpawner.GetDistrictChain()) - handy for checking the
--- real District.ParentDistrict() hierarchy live without digging through WolvenKit each time.
-local function drawDistrictOverlay(x, y)
-    local sp = getSpawner()
-    if not sp then return end
-    ImGui.SetNextWindowPos(x, math.max(0, y - 50), ImGuiCond.Always)
-    if ImGui.Begin("GR - District") then
-        ImGui.Text(sp:GetDistrictChain())
-    end
-    ImGui.End()
-end
-
 local function drawReleaseWindow()
     if ImGui.Begin("Gang Retaliation v" .. VERSION) then
         if GR.campaignId == 0 then
@@ -1808,9 +1885,7 @@ local function drawReleaseWindow()
             drawHomes()
         end
     end
-    local x, y = ImGui.GetWindowPos()
     ImGui.End()
-    drawDistrictOverlay(x, y)
 end
 
 registerForEvent("onDraw", function()
@@ -1956,17 +2031,27 @@ registerForEvent("onDraw", function()
                 local ok, result = pcall(tryAmbush, true)
                 GR.lastAction = tostring(result)
                 print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug ambush: " .. GR.lastAction)
             end
             ImGui.SameLine()
             if ImGui.Button(text("GR-UiSmsAmbush", "Debug: SMS + ambush in 15 s")) then
                 local ok, result = pcall(tryAmbush, true, 15)
                 GR.lastAction = tostring(result)
                 print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug SMS+ambush: " .. GR.lastAction)
             end
             if ImGui.Button("Debug: vehicle ambush now") then
                 local ok, result = pcall(tryAmbush, true, 0, true)
                 GR.lastAction = tostring(result)
                 print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug vehicle ambush: " .. GR.lastAction)
+            end
+            ImGui.SameLine()
+            if ImGui.Button("Debug: vehicle chase now") then
+                local ok, result = pcall(tryVehicleChase, true)
+                GR.lastAction = tostring(result)
+                print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug vehicle chase: " .. GR.lastAction)
             end
             local hud = getSystem("GangRetaliation.GRHud")
             if hud then
@@ -1980,6 +2065,7 @@ registerForEvent("onDraw", function()
                 local ok, result = pcall(tryGig, true)
                 GR.lastAction = tostring(result)
                 print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug gig: " .. GR.lastAction)
             end
             ImGui.SameLine()
             if ImGui.Button("Hide lines") then
@@ -2036,6 +2122,8 @@ registerForEvent("onDraw", function()
             if ImGui.Button("Debug: NCPD raid now") then
                 local ok, res = pcall(tryRaid, true)
                 GR.lastAction = tostring(res)
+                print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug raid: " .. GR.lastAction)
             end
             ImGui.SameLine()
             if ImGui.Button("Debug: start war") then
@@ -2046,11 +2134,29 @@ registerForEvent("onDraw", function()
                     return War.forceWar(campaign, warContext(campaign, settings))
                 end)
                 GR.lastAction = ok and (res and "war started" or "no war possible") or tostring(res)
+                print("[GangRetaliation] Debug: " .. GR.lastAction)
             end
             ImGui.SameLine()
             if ImGui.Button("Debug: skirmish now") then
                 local ok, res = pcall(trySkirmish, true)
                 GR.lastAction = tostring(res)
+                print("[GangRetaliation] Debug: " .. GR.lastAction)
+                debugLog("Debug skirmish: " .. GR.lastAction)
+            end
+            ImGui.SameLine()
+            if ImGui.Button("Debug: export district list (CSV)") then
+                local ok, res = pcall(function()
+                    local warSys = getSystem("GangRetaliation.GRWar")
+                    if not warSys then return "no GRWar system" end
+                    local csv = warSys:ExportAllDistrictChains()
+                    local file = io.open("district_export.csv", "w")
+                    if not file then return "could not open district_export.csv for write" end
+                    file:write(csv)
+                    file:close()
+                    local _, rows = csv:gsub("\n", "\n")
+                    return "wrote district_export.csv (" .. tostring(rows) .. " rows)"
+                end)
+                GR.lastAction = ok and res or tostring(res)
             end
             ImGui.Separator()
             local campaign = Store.ensureCampaign(GR.campaignId)
@@ -2150,9 +2256,7 @@ registerForEvent("onDraw", function()
             if GR.lastAction ~= "" then ImGui.TextDisabled(GR.lastAction) end
         end
     end
-    local devX, devY = ImGui.GetWindowPos()
     ImGui.End()
-    drawDistrictOverlay(devX, devY)
 end)
 
 return GR

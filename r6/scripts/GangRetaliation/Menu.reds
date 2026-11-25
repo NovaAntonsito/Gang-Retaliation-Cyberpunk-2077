@@ -1960,6 +1960,13 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         countText.Reparent(panel);
 
         this.BuildHistoryRows(panel, hist, entry.name, "");
+        // 2026-11-24, user's call: open the timeline scrolled to the top, not wherever the scroll
+        // position happened to be left at from a previous tab/sub-tab. m_detailScroller drives its
+        // scrollbar via VerticalScrollBarRef (two-way auto sync - see the ink scrollbar pattern notes),
+        // so this alone is enough; no manual grip/slider sync needed or wanted alongside it.
+        if IsDefined(this.m_detailScroller) {
+            this.m_detailScroller.SetScrollPosition(0.0);
+        }
     }
 
     // sub-tab 2, Gang History: every event tagged with the selected member's whole gang (gangFilter = gangKey).
@@ -1983,6 +1990,9 @@ public class GRNemesisMenuController extends gameuiMenuGameController {
         countText.Reparent(panel);
 
         this.BuildHistoryRows(panel, hist, "", entry.gangKey);
+        if IsDefined(this.m_detailScroller) {
+            this.m_detailScroller.SetScrollPosition(0.0);
+        }
     }
 
     private func BuildHistoryRows(panel: ref<inkVerticalPanel>, hist: ref<GRChronData>, memberFilter: String, gangFilter: String) {

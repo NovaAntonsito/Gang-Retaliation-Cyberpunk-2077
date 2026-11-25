@@ -1,5 +1,37 @@
 # Changelog - Gang Retaliation
 
+## [1.5.7] - 2026-11-24
+
+### English
+
+#### Added
+- **Gang vehicles can now chase you while you're driving.** An ambush/raid used to simply not happen at all while you were in a vehicle - now a gang car can spawn behind or beside you (never ahead) and give chase, already hostile so it opens fire right away, bringing along an escort or two when there's room for them. If you get out of your own vehicle they stop and get out too; get back in and they remount and resume the chase. Driving far enough away while they're still chasing (or taking them down) ends it cleanly, with "...was evaded, but they vow to get you next time" if you simply outran them.
+- **Named interiors and other out-of-place spots are now excluded from ambush/raid spawns.** Gang encounters no longer trigger inside places like Konpeki Plaza, specific Arasaka Tower floors, apartments, clinics, and a number of other named locations that never made sense for a street ambush.
+
+#### Fixed
+- "Fled"/"escaped" notifications could fire well before the Nemesis was actually gone - sometimes while still standing in plain sight - now they only fire once the Nemesis is genuinely out of sight and gone.
+- Several CET debug buttons only printed to the console and never showed on the on-screen debug overlay.
+- Vehicle chase occupants weren't actually aggressive on spawn - they now open fire right away instead of needing to be provoked first.
+- A vehicle chase could sometimes stay marked active forever after it should have ended (occupants neutralized, dismounted to fight on foot, or the car itself wrecked/crashed and stopped moving) - all of these now resolve properly. Outrunning or defeating the gang mid-chase now reliably ends the encounter instead of occasionally leaving it stuck.
+- A new "Vehicle Chase Escape Distance" setting (100-2000m, default 300m) lets you tune how far you need to outrun a chase car before it gives up.
+- Rare spawn placement issues for vehicle chases (underground, under a bridge) fixed.
+- History/Gang History detail timelines now scroll to the top automatically when opened.
+
+### Español
+
+#### Añadido
+- **Los vehículos de pandilla ahora pueden perseguirte mientras conducís.** Antes una emboscada/redada directamente no pasaba nada mientras estabas en un vehículo - ahora un auto de pandilla puede aparecer detrás o al costado tuyo (nunca adelante) y darte caza, ya hostil para disparar de inmediato, trayendo uno o dos escoltas cuando hay lugar para ellos. Si te bajás de tu propio vehículo ellos se detienen y también se bajan; si volvés a subir, vuelven a montarse y retoman la persecución. Alejarte lo suficiente mientras todavía te persiguen (o derribarlos) termina la persecución de forma limpia, con un "...fue esquivado, pero jura atraparte la próxima vez" si simplemente los dejaste atrás.
+- **Los interiores con nombre y otros lugares fuera de lugar ahora quedan excluidos de las emboscadas/redadas.** Los encuentros de pandilla ya no se disparan dentro de lugares como Konpeki Plaza, pisos específicos de la Torre Arasaka, apartamentos, clínicas y varias otras ubicaciones con nombre que nunca tuvieron sentido para una emboscada callejera.
+
+#### Arreglado
+- Los avisos de "fled"/"escaped" podían dispararse bastante antes de que el Némesis realmente se hubiera ido - a veces mientras todavía estaba a la vista - ahora solo se disparan una vez que el Némesis realmente está fuera de la vista y se fue.
+- Varios botones de debug de CET solo imprimían en la consola y nunca aparecían en el overlay de debug en pantalla.
+- Los ocupantes de una persecución en vehículo no estaban realmente agresivos al aparecer - ahora disparan de inmediato en vez de necesitar ser provocados primero.
+- Una persecución en vehículo a veces podía quedar marcada como activa para siempre después de que debería haber terminado (ocupantes neutralizados, bajados a pelear a pie, o el propio auto destrozado/chocado y detenido) - todo esto ahora se resuelve correctamente. Dejar atrás o derrotar a la pandilla en medio de la persecución ahora termina el encuentro de forma confiable en vez de a veces quedar atascado.
+- Nuevo ajuste "Distancia de escape de persecución en vehículo" (100-2000m, por defecto 300m) para ajustar qué tan lejos hay que dejar atrás al auto de persecución antes de que se rinda.
+- Arreglados casos raros de posición de aparición para persecuciones en vehículo (bajo tierra, debajo de un puente).
+- Las líneas de tiempo de Historial/Historial de Pandilla ahora se desplazan hasta arriba automáticamente al abrirse.
+
 ## [1.5.6] - 2026-11-23
 
 ### English

@@ -259,9 +259,10 @@ public class GRHud extends ScriptableSystem {
     }
 
     // Small standalone panel, always showing the player's current district chain (leaf -> root) while
-    // on-screen debug is on - a live readout, not a log, so it just overwrites in place as you walk
-    // around. Positioned directly above the debug log box (same horizontal alignment). Handy for
-    // checking the Badlands sub-area hierarchy without opening WolvenKit.
+    // its own setting (districtPanelEnabled, independent of the on-screen debug log) is on - a live
+    // readout, not a log, so it just overwrites in place as you walk around. Positioned just under the
+    // minimap, roughly matching its width. Handy for checking the Badlands sub-area hierarchy without
+    // opening WolvenKit.
     private func EnsureDistrictPanel() -> Bool {
         if IsDefined(this.m_districtBox) {
             return true;
@@ -280,16 +281,15 @@ public class GRHud extends ScriptableSystem {
         watcher.Initialize(this.GetGameInstance());
         watcher.ScaleWidget(slot);
 
-        // Anchored by its TOP edge (fixed margin-top) rather than tied to the log box's position, so
-        // when the chain is long enough to wrap to a second line, the box grows downward from a fixed
-        // point instead of needing to shift - with enough headroom above the log box (which starts
-        // around y=760 in this 2160-tall virtual canvas) that even two lines never overlaps it.
+        // Anchored by its TOP edge (fixed margin-top) just under the minimap, roughly the same width as
+        // it, so when the chain is long enough to wrap to a second line, the box grows downward from a
+        // fixed point instead of needing to shift or overlap the minimap above it.
         let box: ref<inkCanvas> = new inkCanvas();
         box.SetName(n"gr_district");
         box.SetAnchor(inkEAnchor.TopRight);
         box.SetAnchorPoint(new Vector2(1.0, 0.0));
-        box.SetMargin(new inkMargin(0.0, 640.0, 70.0, 0.0));
-        box.SetSize(new Vector2(1040.0, 50.0));
+        box.SetMargin(new inkMargin(0.0, 630.0, 134.0, 0.0));
+        box.SetSize(new Vector2(414.0, 50.0));
         box.SetVisible(false);
 
         let bg: ref<inkRectangle> = new inkRectangle();
@@ -306,7 +306,7 @@ public class GRHud extends ScriptableSystem {
         let text: ref<inkText> = this.NewText(27, GRHud.White(), n"Medium");
         text.SetAnchor(inkEAnchor.TopLeft);
         text.SetMargin(new inkMargin(16.0, 12.0, 16.0, 12.0));
-        text.SetWrappingAtPosition(995.0);
+        text.SetWrappingAtPosition(382.0);
         text.SetText("");
         text.Reparent(box);
 
@@ -320,7 +320,7 @@ public class GRHud extends ScriptableSystem {
     // district tree and there is no need to re-check that every single tick.
     private func CheckDistrictChange() {
         let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
-        if !IsDefined(settings) || !settings.debugOnScreen || !settings.debugOnScreenCampaign {
+        if !IsDefined(settings) || !settings.districtPanelEnabled {
             if IsDefined(this.m_districtBox) {
                 this.m_districtBox.SetVisible(false);
             }
@@ -340,7 +340,7 @@ public class GRHud extends ScriptableSystem {
         this.m_districtBox.SetVisible(StrLen(chain) > 0);
         if StrLen(chain) > 0 {
             let textH: Float = this.m_districtText.GetDesiredSize().Y;
-            this.m_districtBox.SetSize(new Vector2(1040.0, MaxF(50.0, textH + 24.0)));
+            this.m_districtBox.SetSize(new Vector2(414.0, MaxF(50.0, textH + 24.0)));
         }
     }
 

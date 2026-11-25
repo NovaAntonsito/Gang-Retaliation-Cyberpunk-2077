@@ -12,4 +12,4 @@ Source tree for our changes to NovaAntonsito's Gang Retaliation (Cyberpunk 2077)
 - `NOTES.md` working notes (context, design, verified facts, open items; `NOTES.es.md` = Spanish copy, keep both in sync); `CLAUDE.md` pointer for AI assistants
 - `CHANGELOG.md` release notes; built releases go in `../../Distribution/GangRetaliation/<version>/`
 
-Current version: 1.5.6. Nova's original zips are kept in `Other/GangRetaliation_vendor_zips/`.
+Current version: 1.5.7. Nova's original zips are kept in `Other/GangRetaliation_vendor_zips/`.

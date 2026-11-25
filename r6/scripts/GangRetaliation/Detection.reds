@@ -65,6 +65,10 @@ public class GRDetection extends ScriptableSystem {
 
     private let m_hiding: array<ref<GRCandidate>>;
     private let m_fledIds: array<EntityID>;
+    // Candidates mid-way through VanishHiding()'s 3 s deferred despawn - held here so the "fled"/"escaped"
+    // promotion can wait for DespawnVanished() to actually delete them, instead of firing early (see
+    // PromoteGone()).
+    private let m_vanishing: array<ref<GRCandidate>>;
 
     public func GRProfState() -> String {
         return "candidates=" + IntToString(ArraySize(this.m_candidates)) + " combatants=" + IntToString(ArraySize(this.m_combatants))
@@ -684,12 +688,10 @@ public class GRDetection extends ScriptableSystem {
             GRMoveTo(puppet, npc.GetWorldPosition(), moveMovementType.Walk, 1.0);
         }
         ArrayPush(this.m_hiding, candidate);
-        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
-        if IsDefined(player) && !player.IsInCombat() {
-            this.PromoteFled(candidate);
-            this.Debug("Escondido con el combate terminado: " + this.TagCandidate(candidate));
-            return;
-        }
+        // 2026-11-24: used to promote immediately right here whenever combat had already ended by this
+        // point - but that could fire "fled" while V was still looking straight at them. Let the normal
+        // unseen-time tracking in UpdateHiding()/VanishHiding() decide when they're actually gone,
+        // combat active or not.
         this.UpsertCandidate(npc);
         this.Debug("Se esconde: " + this.TagCandidate(candidate) + " a " + FloatToString(this.DistanceToPlayer(npc)) + " m de V");
     }
@@ -707,7 +709,7 @@ public class GRDetection extends ScriptableSystem {
             let done: Bool = false;
             if !IsDefined(npc) {
                 if !candidate.ddSpawn {
-                    this.PromoteFled(candidate);
+                    this.PromoteGone(candidate);
                 }
                 done = true;
             } else {
@@ -759,8 +761,8 @@ public class GRDetection extends ScriptableSystem {
         let gi: GameInstance = this.GetGameInstance();
         let spawner: ref<GRSpawner> = GRSpawner.Get(gi);
         if IsDefined(spawner) && spawner.IsOwnSpawn(candidate.entityID) {
-            this.PromoteFled(candidate);
             spawner.Vanish(candidate.entityID);
+            this.PromoteGone(candidate);
             this.Debug("Escondido desaparece tras perderse de vista 3 s (spawn propio): " + this.TagCandidate(candidate));
             return true;
         }
@@ -783,9 +785,13 @@ public class GRDetection extends ScriptableSystem {
         // generic gang mooks. No safer alternative exists, so this now does what own-spawn already does
         // successfully (see GRSpawner.Vanish, same DeleteEntity call) - deferred a few seconds past the pin
         // so it's not deleted out from under its own still-finishing move command. Not yet confirmed in game.
+        // 2026-11-24: used to call PromoteFled()/PromoteGone() right here, before the 3 s deferred
+        // despawn below has actually run - "fled"/"escaped" sounded final but the NPC (and their map
+        // marker) were still in the world for a few more seconds. Stash in m_vanishing instead and only
+        // promote once DespawnVanished() actually deletes them.
+        ArrayPush(this.m_vanishing, candidate);
         GRDetectionCall.SendDelayed(gi, GRDetectionCall.DespawnVanished(), candidate.entityID, 3.0);
-        this.PromoteFled(candidate);
-        this.Debug("Escondido desaparece tras perderse de vista 3 s: " + this.TagCandidate(candidate));
+        this.Debug("Escondido se eliminara tras perderse de vista 3 s: " + this.TagCandidate(candidate));
         return true;
     }
 
@@ -831,7 +837,7 @@ public class GRDetection extends ScriptableSystem {
                 if candidate.ddSpawn {
                     this.Debug("Huida descartada: Drug Dealer borro a su NPC (" + this.TagCandidate(candidate) + ")");
                 } else {
-                    this.PromoteFled(candidate);
+                    this.PromoteGone(candidate);
                 }
                 done = true;
             } else {
@@ -887,7 +893,15 @@ public class GRDetection extends ScriptableSystem {
                     }
                     if ownSpawn {
                         if (candidate.unseen >= 3.0 && distance > 25.0) || distance > 50.0 {
-                            this.PromoteFled(candidate);
+                            // 2026-11-24: used to promote here without ever actually despawning the NPC -
+                            // left to wander off on native AI alone, so the map marker could linger long
+                            // after "fled" fired. Actually vanish them (same call VanishHiding/
+                            // VanishFleeing already use for an own-spawn) before promoting.
+                            let spawner: ref<GRSpawner> = GRSpawner.Get(this.GetGameInstance());
+                            if IsDefined(spawner) {
+                                spawner.Vanish(candidate.entityID);
+                            }
+                            this.PromoteGone(candidate);
                             done = true;
                         } else {
                             if elapsed > 60.0 {
@@ -931,7 +945,7 @@ public class GRDetection extends ScriptableSystem {
         let npc: ref<ScriptedPuppet> = this.FindPuppet(id);
         if !IsDefined(npc) {
             if !candidate.ddSpawn {
-                this.PromoteFled(candidate);
+                this.PromoteGone(candidate);
             }
             return;
         }
@@ -944,8 +958,8 @@ public class GRDetection extends ScriptableSystem {
         let gi: GameInstance = this.GetGameInstance();
         let spawner: ref<GRSpawner> = GRSpawner.Get(gi);
         if IsDefined(spawner) && spawner.IsOwnSpawn(id) {
-            this.PromoteFled(candidate);
             spawner.Vanish(id);
+            this.PromoteGone(candidate);
             this.Debug("Desaparece con flash (spawn propio): " + this.TagCandidate(candidate));
             return;
         }
@@ -957,8 +971,10 @@ public class GRDetection extends ScriptableSystem {
                 GRLog("Huida con flash: teletransporte validado a " + FloatToString(Vector4.Distance(pos, player.GetWorldPosition())) + " m de V");
             }
         }
+        candidate.unseen = 0.0;
         ArrayPush(this.m_hiding, candidate);
-        this.PromoteFled(candidate);
+        // 2026-11-24: used to promote immediately right here, well before the NPC is actually despawned
+        // by the normal hiding/vanish cycle below - removed so "fled" only fires once they're truly gone.
         this.Debug("Desaparece con flash (del mundo, a " + FloatToString(this.DistanceToPlayer(npc)) + " m): " + this.TagCandidate(candidate));
     }
 
@@ -1008,6 +1024,18 @@ public class GRDetection extends ScriptableSystem {
                 GameInstance.GetDynamicEntitySystem().DeleteEntity(id);
             } else {
                 this.Debug("Escondido (fuera del mundo): ya no existia al llegar la eliminacion diferida, nada que borrar (" + EntityID.ToDebugString(id) + ")");
+            }
+            // Only now, with the entity actually gone one way or the other, fire the deferred promotion
+            // this candidate was stashed in m_vanishing for (see VanishHiding()).
+            let vi: Int32 = 0;
+            while vi < ArraySize(this.m_vanishing) {
+                if this.m_vanishing[vi].entityID == id {
+                    let candidate: ref<GRCandidate> = this.m_vanishing[vi];
+                    ArrayErase(this.m_vanishing, vi);
+                    this.PromoteGone(candidate);
+                    break;
+                }
+                vi += 1;
             }
             return;
         }
@@ -1167,10 +1195,14 @@ public class GRDetection extends ScriptableSystem {
                         }
                     }
                 } else if !pacified && !candidate.fleeing && candidate.health > 0.0 && (candidate.health <= threshold || candidate.fled) {
-                    if candidate.fled {
-                        this.PromoteFled(candidate);
-                    } else {
-                        this.Promote(candidate, candidate.limbsMissing ? "escapeddismembered" : "escaped");
+                    // 2026-11-24: used to promote right here, regardless of whether V could still see
+                    // them - "escaped"/"fled" has finality but the NPC (and their map marker) could be
+                    // standing in plain sight. Route through the same hiding/vanish tracking an active
+                    // flee uses instead, so the message only fires once they're actually, truly gone.
+                    if !IsDefined(this.FindHiding(candidate.entityID)) {
+                        candidate.unseen = 0.0;
+                        ArrayPush(this.m_hiding, candidate);
+                        this.Debug("Fin de combate: " + this.TagCandidate(candidate) + " queda en seguimiento hasta perderse de vista de verdad");
                     }
                 }
             }
@@ -1232,6 +1264,20 @@ public class GRDetection extends ScriptableSystem {
 
     private func PromoteFled(candidate: ref<GRCandidate>) {
         this.Promote(candidate, candidate.limbsMissing ? "fleddismembered" : "fled");
+    }
+
+    // Single "this candidate is truly gone now" promotion point - shared by every path that used to
+    // promote as soon as a flee/escape started, before the NPC (and their map marker) had actually left
+    // the world. Reported 2026-11-24: "fled"/"escaped" sounds final but the NPC could still be standing
+    // right in front of V. candidate.fled tells apart an active flee (set the instant MakeFleeMode starts
+    // one, regardless of own-spawn/native/flash) from a plain low-health survivor at combat end who was
+    // never actually made to flee (the old "escaped" case).
+    private func PromoteGone(candidate: ref<GRCandidate>) {
+        if candidate.fled {
+            this.PromoteFled(candidate);
+        } else {
+            this.Promote(candidate, candidate.limbsMissing ? "escapeddismembered" : "escaped");
+        }
     }
 
     private func Promote(candidate: ref<GRCandidate>, origin: String) {

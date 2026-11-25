@@ -28,6 +28,7 @@ public class GRSpawner extends ScriptableSystem {
     private let m_immuneRaidEnd: Float;
     private let m_raidPoliceOnV: Bool;
     private let m_raidForceIDs: array<EntityID>;
+    private let m_lastSpawnFailReason: String;
     private let m_godModeLogs: Int32;
 
     private let m_deaths: array<Int32>;
@@ -73,10 +74,41 @@ public class GRSpawner extends ScriptableSystem {
     private let m_vehicleID: EntityID;
     private let m_vehicleState: Int32;
     private let m_vehicleStateTime: Float;
+    // True only for a chase spawned via StartVehicleChase() (V already driving) - keeps the occupants
+    // hostile and chasing/shooting from the moving car instead of the normal drive-up-then-dismount
+    // ambush flow TickVehicle() otherwise runs.
+    private let m_vehicleChaseMode: Bool;
+    // Nemesis ids evaded via the vehicle-chase "car no longer loaded" cutoff (EvadeVehicleChase()) -
+    // polled and cleared by Lua same tick-poll pattern as m_appearanceReports, so it can fire the
+    // "evaded" message.
+    private let m_vehicleEvadedIds: array<Int32>;
+    // 2026-11-24: how long the chase vehicle has been continuously undefined (0.0 = currently defined).
+    // Debounces EvadeVehicleChase() - a single undefined tick can be a transient streaming/occlusion
+    // blip even while V is right next to the car, not the engine's real distance-culling unload; see the
+    // chase-mode branch of TickVehicle() for the full story.
+    private let m_vehicleLostSince: Float;
+    // 2026-11-24: throttle for the on-screen chase diagnostic log (once a second, not every tick).
+    private let m_vehicleDebugAt: Float;
+    // 2026-11-24, user's call after a real in-game crash: a chase car that wrecks and gets physically
+    // stuck (occupants still alive, still mounted, just immobilized) trips none of the other end
+    // conditions - not neutralized (alive), not dismounted (still "in" the car), not evaded (V can easily
+    // still be nearby). m_vehicleLastPos/m_vehicleStuckSince track how long the car has sat still so
+    // TickVehicle() can hand off to normal combat once it's clearly not going anywhere, same as a genuine
+    // dismount.
+    private let m_vehicleLastPos: Vector4;
+    private let m_vehicleStuckSince: Float;
 
     private let m_spotFound: Bool;
     private let m_spotFails: array<Int32>;
     private let m_trafficFails: array<Int32>;
+    // [total traffic vehicles, out of distance/height band, wrong angle (ahead of V), no clear space] -
+    // same diagnostic pattern as m_trafficFails, surfaced via GetLastSpawnFailReason() when
+    // FindChaseSpot() can't find anywhere to put a chase vehicle.
+    private let m_chaseSpotFails: array<Int32>;
+    // [total candidates tried, failed physical clearance, failed the human-navmesh ground snap, failed
+    // the path-back-to-V connectivity check] - same diagnostic pattern as m_chaseSpotFails above, but for
+    // FindChaseSpotDirect() (the fallback used once the traffic-anchored sweep above has already failed).
+    private let m_chaseSpotDirectFails: array<Int32>;
 
     private let m_leftIDs: array<EntityID>;
     private let m_leftNemesis: array<Int32>;
@@ -750,6 +782,10 @@ public class GRSpawner extends ScriptableSystem {
         return ok;
     }
 
+    public func GetLastSpawnFailReason() -> String {
+        return this.m_lastSpawnFailReason;
+    }
+
     public func GetAmbushBlocker() -> String {
         let blocker: String = this.GetSpawnBlocker();
         if StrLen(blocker) > 0 {
@@ -777,7 +813,75 @@ public class GRSpawner extends ScriptableSystem {
         if GRIntegrations.IsDDJobActive(this.GetGameInstance()) {
             return "Drug Dealer job";
         }
+        if this.IsAmbushRaidExcludedHere() {
+            return "excluded location";
+        }
         return "";
+    }
+
+    // Ambush/raid LOCATION-suitability exclusion list (separate concern from gang TERRITORY - that's
+    // GetDistrictGangs()/War.reds). User-curated 2026-11-24 by reviewing a full CSV export of every
+    // District_Record in the game (GRWar.ExportAllDistrictChains(), see district_export.csv) row by row -
+    // named interiors, quest-only spots, and a few open areas judged unsuitable for an ambush/raid to
+    // spawn in. Checked by exact match against the player's own current (leaf-most) district name - an
+    // entry for a parent-level district itself (e.g. "CorpoPlaza", "Downtown", "CityCenter", "MorroRock",
+    // "NorthBadlands", "Langley_Clinic", "Dogtown_Brooklyn") excludes its entire sub-area, not just that
+    // exact spot, since GetCurrentDistrict() resolves to the parent whenever you're not inside one of its
+    // own more specific named children.
+    private static func AmbushRaidExcludedDistricts() -> array<String> {
+        return [
+            "Badlands_DryCreek", "LagunaBend_LakeHut", "Badlands_NorthSunriseOilField", "Badlands_RattlesnakeCreek",
+            "Badlands_SoCalBorderCrossing", "Badlands_Spaceport", "Badlands_Yucca", "Badlands_YuccaGarage",
+            "Badlands_YuccaRadioTower", "CorpoPlaza_Apartment", "CorpoPlaza_ArasakaTowerAtrium",
+            "CorpoPlaza_ArasakaTowerCEOFloor", "CorpoPlaza_ArasakaTowerJenkins", "CorpoPlaza_ArasakaTowerJungle",
+            "CorpoPlaza_ArasakaTowerLobby", "CorpoPlaza_ArasakaTowerNest", "CorpoPlaza_ArasakaTowerSaburoOffice",
+            "CorpoPlaza_ArasakaTowerUnlistedFloors", "CorpoPlaza_ArasakaTowerUpperAtrium", "CorpoPlaza_q201Cyberspace",
+            "CorpoPlaza", "Downtown_Jinguji", "Downtown_TheHammer", "Downtown", "CityCenter", "Dogtown_Brooklyn",
+            "Glen_Apartment", "Glen_Embers", "Glen_MusicStore", "Glen_NCPDLab", "Glen_WichedTires",
+            "Vista_del_Rey_Delamain", "Vista_del_rey_ElCoyoteCojo", "Vista_del_Rey_LaCatrina", "Langley_Clinic",
+            "MorroRock_NCX", "MorroRock", "NorthBadlands", "Coastview_BattysHotel", "Coastview_ButcherShop",
+            "Coastview_q110Cyberspace", "Coastview_VDBChapel", "Coastview_VDBMaglev", "Arroyo_Arasaka_Warehouse",
+            "Arroyo_ClairesGarage", "Arroyo_CytechFactory", "Arroyo_Kendachi", "Arroyo_KenmoreCafe", "Arroyo_Red_Dirt",
+            "RanchoCoronado_Caliente", "RanchoCoronado_GunORama", "RanchoCoronado_Piez", "RanchoCoronado_Softsys",
+            "RanchoCoronado_Stylishly", "SouthBadlands_EdgewoodFarm", "SouthBadlands_q201SpaceStation",
+            "SouthBadlands_TrailerPark", "ArasakaWaterfront_AbandonedWarehouse", "ArasakaWaterfront_KonpekiPlaza",
+            "Kabuki_JudysApartment", "Kabuki_LizziesBar", "LittleChina_Afterlife", "LittleChina_MistysShop",
+            "LittleChina_Q101Cyberspace", "LittleChina_RiotClub", "LittleChina_TomsDiner", "LittleChina_VApartment",
+            "LittleChina_VictorsClinic", "Northside_All_Foods", "Northside_Apartment", "Northside_Totentaz",
+            "Northside_WNS", "JapanTown_Apartment", "JapanTown_Clouds", "JapanTown_DarkMatter", "JapanTown_Fingers",
+            "JapanTown_FourthWallBdStudio", "JapanTown_HiromisApartment", "JapanTown_VR_Tutorial",
+            "JapanTown_Wakakos_Pachinko_Parlor", "NorthOaks_Arasaka_Estate", "NorthOaks_Denny_Estate",
+            "NorthOaks_Kerry_Estate"
+        ];
+    }
+
+    // Exposed for debug tooling: shows the exact key IsAmbushRaidExcludedHere() checks against the list,
+    // so a "not excluded when it should be" report can be diagnosed without guessing.
+    public func GetLeafDistrictKey() -> String {
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        if !IsDefined(player) {
+            return "";
+        }
+        let district: wref<District_Record> = player.GetPreventionSystem().GetCurrentDistrict().GetDistrictRecord();
+        if !IsDefined(district) {
+            return "";
+        }
+        return district.EnumName();
+    }
+
+    private func IsAmbushRaidExcludedHere() -> Bool {
+        let key: String = this.GetLeafDistrictKey();
+        if StrLen(key) == 0 {
+            return false;
+        }
+        // ArrayContains() on array<String> doesn't reliably do value equality in redscript (see
+        // GRWar.IsCuratedWraithsDistrict for the same workaround) - compare with Equals() by hand instead.
+        for excluded in GRSpawner.AmbushRaidExcludedDistricts() {
+            if Equals(excluded, key) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public func IsPlayerSwimming() -> Bool {
@@ -1057,6 +1161,7 @@ public class GRSpawner extends ScriptableSystem {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
             GRLog("A pie: no se intenta para Nemesis #" + IntToString(nemesisId) + " (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            this.m_lastSpawnFailReason = StrLen(blocker) > 0 ? ("blocked: " + blocker) : "already spawned";
             return false;
         }
         this.m_raidMode = false;
@@ -1072,13 +1177,16 @@ public class GRSpawner extends ScriptableSystem {
         let blocker: String = this.GetAmbushBlocker();
         if StrLen(blocker) > 0 || this.IsNemesisSpawned(nemesisId) {
             GRLog("Vehiculo: no se intenta para Nemesis #" + IntToString(nemesisId) + " (bloqueo=" + blocker + ", ya generado=" + ToString(this.IsNemesisSpawned(nemesisId)) + ")");
+            this.m_lastSpawnFailReason = StrLen(blocker) > 0 ? ("blocked: " + blocker) : "already spawned";
             return false;
         }
         if this.IsMachineNemesis(nemesisId, recordID, "Vehiculo") {
+            this.m_lastSpawnFailReason = "machine nemesis";
             return false;
         }
         if !IsDefined(TweakDBInterface.GetVehicleRecord(TDBID.Create(vehicleRecord))) {
             GRLog("Vehiculo: record inexistente " + vehicleRecord + " para Nemesis #" + IntToString(nemesisId));
+            this.m_lastSpawnFailReason = "invalid vehicle record";
             return false;
         }
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
@@ -1099,6 +1207,7 @@ public class GRSpawner extends ScriptableSystem {
                 GRLog("Vehiculo: sin auto del trafico util, no se genera (cargados=" + IntToString(this.m_trafficFails[0])
                     + ", fuera de rango=" + IntToString(this.m_trafficFails[1]) + ", sin camino=" + IntToString(this.m_trafficFails[2])
                     + ", sin hueco=" + IntToString(this.m_trafficFails[3]) + ", a la vista=" + IntToString(this.m_trafficFails[4]) + ")");
+                this.m_lastSpawnFailReason = "no traffic/road nearby to spawn a vehicle on";
                 return false;
             }
         }
@@ -1115,11 +1224,13 @@ public class GRSpawner extends ScriptableSystem {
         ArrayPush(spec.tags, n"GangRetaliation");
         this.m_vehicleID = des.CreateEntity(spec);
         if !EntityID.IsDefined(this.m_vehicleID) {
-            GRLog("Vehiculo: CreateEntity fallo para " + vehicleRecord);
+            GRDebugLog(this.GetGameInstance(), "Vehiculo: CreateEntity fallo para " + vehicleRecord, "Spawner");
+            this.m_lastSpawnFailReason = "vehicle CreateEntity failed";
             return false;
         }
 
         this.m_raidMode = false;
+        this.m_vehicleChaseMode = false;
         this.m_vehicleState = 1;
         this.m_vehicleStateTime = this.Now();
         this.SpawnAt(nemesisId, recordID, appearance, pos, spec.orientation, line, speaker);
@@ -1137,14 +1248,328 @@ public class GRSpawner extends ScriptableSystem {
         this.m_ambushCalmSince = 0.0;
         this.m_ambushSawCombat = false;
         this.m_stuckChecked = true;
-        GRLog("Emboscada en vehiculo: Nemesis #" + IntToString(nemesisId) + " (" + vehicleRecord + ")");
+        GRDebugLog(this.GetGameInstance(), "Emboscada en vehiculo: Nemesis #" + IntToString(nemesisId) + " (" + vehicleRecord + ")", "Spawner");
         return true;
     }
 
-    private func SeatName(index: Int32) -> CName {
-        switch index {
-            case 0: return n"seat_front_left";
-            case 1: return n"seat_front_right";
+    // Same "piggyback on a real traffic vehicle's position" trick FindTrafficSpot uses to guarantee a
+    // valid road spot, but anchored to V's own moving vehicle instead of V on foot, and preferring a
+    // traffic vehicle roughly behind/beside V (never ahead) - this should read as "catching up to give
+    // chase", not "waiting up the road".
+    private func FindChaseSpot(playerVehicle: ref<VehicleObject>, out spawnPos: Vector4, out spawnOri: Quaternion) -> Bool {
+        let traffic: ref<GRTraffic> = GRTraffic.Get(this.GetGameInstance());
+        if !IsDefined(traffic) {
+            return false;
+        }
+        let vehicles: array<ref<VehicleObject>> = traffic.GetVehicles();
+        let vPos: Vector4 = playerVehicle.GetWorldPosition();
+        let vForward: Vector4 = playerVehicle.GetWorldForward();
+        vForward.Z = 0.0;
+        vForward = Vector4.Normalize(vForward);
+        this.m_chaseSpotFails = [ArraySize(vehicles), 0, 0, 0];
+        // Sweep every qualifying candidate (closest-ish first isn't guaranteed, but the distance band
+        // below already keeps it tight) and try each one for clearance in turn - trying only the single
+        // nearest candidate (the original version of this) meant one blocked spot in dense traffic
+        // (parked cars, buildings) failed the whole search even with plenty of road nearby.
+        for vehicle in vehicles {
+            if vehicle.GetEntityID() != playerVehicle.GetEntityID() && vehicle.GetEntityID() != this.m_vehicleID {
+                let toVehicle: Vector4 = vehicle.GetWorldPosition() - vPos;
+                let dist: Float = Vector4.Length(toVehicle);
+                // 2026-11-24: 25-70m was far too tight - 77 of 78 real traffic vehicles failed on this
+                // alone in one in-game test, with zero reaching the angle/space checks. Widened to match
+                // the much broader range FindTrafficSpot (the on-foot version) already relies on.
+                if dist <= 15.0 || dist >= 150.0 || AbsF(vehicle.GetWorldPosition().Z - vPos.Z) >= 8.0 {
+                    this.m_chaseSpotFails[1] += 1;
+                } else {
+                    // > 75 degrees off V's own forward means behind or to the side, never ahead.
+                    if Vector4.GetAngleBetween(vForward, toVehicle) <= 75.0 {
+                        this.m_chaseSpotFails[2] += 1;
+                    } else {
+                        if !this.HasSpaceForCar(vehicle, spawnPos) {
+                            this.m_chaseSpotFails[3] += 1;
+                        } else {
+                            // Face the same way V is actually travelling, not the anchor traffic
+                            // vehicle's own facing (could easily be the oncoming lane) - so the chase
+                            // vehicle is already pointed the right way to catch up, not stuck doing a
+                            // three-point turn first.
+                            spawnOri = Quaternion.BuildFromDirectionVector(vForward);
+                            let ground: Vector4 = GameInstance.GetNavigationSystem(this.GetGameInstance()).GetNearestNavmeshPointBelowOnlyHumanNavmesh(spawnPos + new Vector4(0.0, 0.0, 1.0, 0.0), 0.5, 5);
+                            if !Vector4.IsZero(ground) && Vector4.Distance(ground, spawnPos) <= 10.0 {
+                                spawnPos = ground;
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Fallback for when FindChaseSpot() can't find a usable real traffic vehicle to anchor on -
+    // GRTraffic's list is a rolling log of every vehicle that has ever attached this session (capped at
+    // 120, pruned lazily), not a live "what's near V right now" feed, so in practice most entries are
+    // stale/far away and the primary search can fail even sitting at a busy intersection (confirmed
+    // in-game 2026-11-24: 107/108 candidates failed purely on distance). This instead picks a point
+    // directly behind/beside V's own vehicle and only checks it for physical clearance (same box-overlap
+    // check the Badlands open-field fallback already uses for the on-foot vehicle ambush) - no guarantee
+    // it's literally on a drivable road the way piggybacking on real traffic is, but it's far more
+    // reliable than depending on that stale list, and still restricted to behind/beside V, never ahead.
+    private func FindChaseSpotDirect(playerVehicle: ref<VehicleObject>, out spawnPos: Vector4, out spawnOri: Quaternion) -> Bool {
+        // 2026-11-24: FindChaseSpot()'s own diagnostic counters were the only ones ever surfaced in the
+        // "spawn failed" message, so a failure of THIS method (the one that actually matters once the
+        // traffic-anchored sweep has already failed) was a total black box - confirmed in game on a wide
+        // open freeway, which should trivially have clearance/ground everywhere, still failing with no way
+        // to tell why. Mirrors FindChaseSpot's [total, ...] layout: total tried, failed on physical
+        // clearance, failed the human-navmesh ground snap, failed the path-back-to-V connectivity check.
+        this.m_chaseSpotDirectFails = [0, 0, 0, 0];
+        let vPos: Vector4 = playerVehicle.GetWorldPosition();
+        let vForward: Vector4 = playerVehicle.GetWorldForward();
+        vForward.Z = 0.0;
+        vForward = Vector4.Normalize(vForward);
+        let behind: Vector4 = vForward * -1.0;
+        let angles: array<Float> = [0.0, 30.0, -30.0, 60.0, -60.0, 90.0, -90.0];
+        let distances: array<Float> = [35.0, 50.0, 65.0];
+        let spatial: ref<SpatialQueriesSystem> = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
+        for distance in distances {
+            for angle in angles {
+                this.m_chaseSpotDirectFails[0] += 1;
+                let dir: Vector4 = Vector4.RotateAxis(behind, new Vector4(0.0, 0.0, 1.0, 0.0), angle / 180.0 * Pi());
+                let candidateXY: Vector4 = vPos + dir * distance;
+                // 2026-11-24: found in game on a wide open freeway that's on a gradual incline - every
+                // candidate used to reuse V's own flat current height with just a horizontal offset, so 35-
+                // 65m up or down a sloped road it ends up floating in open air or buried underground
+                // relative to the REAL road surface there, failing both the clearance check and the old
+                // (straight-down-only, human-navmesh-only) ground probe even though the road is right
+                // there. Find the real ground height FIRST via a physics raycast (works on any solid
+                // surface - road, sidewalk, hillside - unlike the navmesh probe, which only recognizes
+                // human-walkable ground and searches a narrow column straight down from the guessed point),
+                // searching a generous vertical range around V's own height to catch the slope either way,
+                // then clearance/path-check against that corrected point instead of the flat guess.
+                let rayStart: Vector4 = candidateXY;
+                rayStart.Z = vPos.Z + 15.0;
+                let rayEnd: Vector4 = candidateXY;
+                rayEnd.Z = vPos.Z - 15.0;
+                let hit: TraceResult;
+                let rayHit: Bool = spatial.SyncRaycastByCollisionGroup(rayStart, rayEnd, n"Static", hit, true, false);
+                let heightDiff: Float = rayHit ? hit.position.Z - vPos.Z : 0.0;
+                // 2026-11-24, user's call: per-candidate diagnostic (angle, distance, whether the ground
+                // raycast hit anything, and the resulting height difference from V) so a search can be
+                // watched live in game - this is what caught the bridge case below.
+                GRDebugLog(this.GetGameInstance(), "Persecucion spot: angulo=" + FloatToString(angle) + " dist=" + FloatToString(distance) + " golpe=" + ToString(rayHit) + " V_Z=" + FloatToString(vPos.Z) + " alturaDif=" + FloatToString(heightDiff), "Spawner");
+                // 2026-11-24, found in game on a bridge: V never saw the chase car at all, because a
+                // side-angle candidate (60/90 degrees) can miss a narrower bridge deck's width entirely -
+                // the raycast then finds no bridge surface at that XY and keeps going straight down to the
+                // street far below instead, which the wide +-15m range above happily accepts as "the real
+                // ground". Reject a hit that's implausibly far from V's own height to catch exactly this -
+                // a genuine gradual incline stays well within this, but a multi-story drop to street level
+                // under a bridge/overpass does not.
+                if rayHit && AbsF(heightDiff) <= 10.0 {
+                    let ground: Vector4 = new Vector4(hit.position.X, hit.position.Y, hit.position.Z, 1.0);
+                    if this.HasOpenSpaceForCarAt(ground, dir * -1.0, spawnPos) {
+                        // Being real ground isn't the same as being connected ground - a separate rooftop
+                        // terrace or an isolated courtyard can both pass the checks above. Same path-sanity
+                        // check FindTrafficSpot uses for the on-foot case: a path must actually exist back
+                        // to V, and not be a wild detour (capped at 2x straight-line distance).
+                        let path: ref<NavigationPath> = GameInstance.GetNavigationSystem(this.GetGameInstance()).CalculatePathOnlyHumanNavmesh(ground, vPos, NavGenAgentSize.Human, 5.0);
+                        let pathLength: Float = IsDefined(path) ? path.CalculateLength() : 0.0;
+                        if pathLength > 0.0 && pathLength <= 2.0 * distance {
+                            // Face the same way V is travelling, not back toward V's position - a side
+                            // spawn facing "toward V" could point diagonally across the road instead of
+                            // down it, so align with vForward instead to start ready to catch up.
+                            spawnOri = Quaternion.BuildFromDirectionVector(vForward);
+                            return true;
+                        } else {
+                            this.m_chaseSpotDirectFails[3] += 1;
+                        }
+                    } else {
+                        this.m_chaseSpotDirectFails[1] += 1;
+                    }
+                } else {
+                    this.m_chaseSpotDirectFails[2] += 1;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Same gate as GetAmbushBlocker(), except it requires V to be in a vehicle instead of forbidding it,
+    // and skips the on-foot-only checks (in combat, swimming) that don't apply while driving.
+    public func GetVehicleChaseBlocker() -> String {
+        let gi: GameInstance = this.GetGameInstance();
+        let player: ref<PlayerPuppet> = GetPlayer(gi);
+        if !IsDefined(player) || player.IsDead() {
+            return "no player";
+        }
+        if this.m_ambushActive {
+            return "ambush active";
+        }
+        if !GameInstance.GetDynamicEntitySystem().IsReady() {
+            return "entity system not ready";
+        }
+        if !VehicleComponent.IsMountedToVehicle(gi, player) {
+            return "not in vehicle";
+        }
+        if StatusEffectSystem.ObjectHasStatusEffectWithTag(player, n"NoCombat") {
+            return "no-combat zone";
+        }
+        if this.IsInScene() {
+            return "scene (no weapons)";
+        }
+        if this.IsQuestObjectiveNearby() {
+            return "quest objective nearby";
+        }
+        if GRSpawner.IsTWRSquadActive() {
+            return "They Will Remember squad";
+        }
+        if GRIntegrations.IsDDJobActive(gi) {
+            return "Drug Dealer job";
+        }
+        if this.IsAmbushRaidExcludedHere() {
+            return "excluded location";
+        }
+        return "";
+    }
+
+    // Spawns a gang vehicle on the road behind/beside V's own moving vehicle and sends it after V with
+    // AIVehicleChaseCommand (the same native command NCPD vehicle pursuits and vanilla's dynamic street
+    // spawns use) instead of the drive-up-then-dismount flow StartVehicleAmbush uses for V on foot.
+    // 2026-11-24, user's call: just a spawn behind (side is fine too) when there are roads, spawned
+    // already hostile so they open fire right away - not yet confirmed in game, in particular whether a
+    // seated occupant actually fires from a moving vehicle without further setup.
+    public func StartVehicleChase(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String, vehicleRecord: String) -> Bool {
+        let blocker: String = this.GetVehicleChaseBlocker();
+        if StrLen(blocker) > 0 {
+            this.m_lastSpawnFailReason = "blocked: " + blocker;
+            return false;
+        }
+        if this.IsNemesisSpawned(nemesisId) {
+            this.m_lastSpawnFailReason = "already spawned";
+            return false;
+        }
+        if this.IsMachineNemesis(nemesisId, recordID, "Persecucion") {
+            this.m_lastSpawnFailReason = "machine nemesis";
+            return false;
+        }
+        if !IsDefined(TweakDBInterface.GetVehicleRecord(TDBID.Create(vehicleRecord))) {
+            this.m_lastSpawnFailReason = "invalid vehicle record";
+            return false;
+        }
+        let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
+        let playerVehicle: ref<VehicleObject> = GetMountedVehicle(player) as VehicleObject;
+        if !IsDefined(playerVehicle) {
+            this.m_lastSpawnFailReason = "not in vehicle";
+            return false;
+        }
+        // 2026-11-24: removed the GetNearestRoadFromPlayerInfo pre-check that used to live here - confirmed
+        // in game it returns a zero point / pathLength=-1 (i.e. "no road found") even standing on an
+        // ordinary street, almost certainly because that data is only reliably maintained while NCPD's own
+        // PreventionSystem is actively tracking a real police pursuit, which this gang chase never is. It
+        // was blocking perfectly valid chases, not just genuinely road-less ones. FindChaseSpot()/
+        // FindChaseSpotDirect() already do their own real validation (ground + path-connectivity), so
+        // this extra gate wasn't needed anyway - it was meant purely as a fast bail-out, not a safety net.
+        let pos: Vector4;
+        let orientation: Quaternion;
+        if !this.FindChaseSpot(playerVehicle, pos, orientation) {
+            if !this.FindChaseSpotDirect(playerVehicle, pos, orientation) {
+                // 2026-11-24: used to report only FindChaseSpot's own counters, which only ever explain why
+                // the traffic-anchored sweep failed - leaving FindChaseSpotDirect (the fallback that
+                // actually matters once traffic has already failed) a total black box. Confirmed in game on
+                // a wide open freeway - should trivially have clearance/ground everywhere, still failed
+                // with zero visibility into why. Now reports both sets of counters.
+                this.m_lastSpawnFailReason = "no traffic/road nearby to spawn a chase vehicle on (traffic: total=" + IntToString(this.m_chaseSpotFails[0])
+                    + " out-of-band=" + IntToString(this.m_chaseSpotFails[1]) + " wrong-angle=" + IntToString(this.m_chaseSpotFails[2])
+                    + " no-space=" + IntToString(this.m_chaseSpotFails[3])
+                    + "; direct: total=" + IntToString(this.m_chaseSpotDirectFails[0]) + " no-space=" + IntToString(this.m_chaseSpotDirectFails[1])
+                    + " no-ground=" + IntToString(this.m_chaseSpotDirectFails[2]) + " no-path=" + IntToString(this.m_chaseSpotDirectFails[3]) + ")";
+                return false;
+            }
+        }
+        // 2026-11-24, user's call: print V's own elevation alongside the chosen spawn point's elevation so
+        // the two can be directly compared - this works regardless of which method (FindChaseSpot's
+        // traffic-anchored sweep, or FindChaseSpotDirect's own candidates) actually found the spot, unlike
+        // the per-candidate "Persecucion spot" diagnostic which only covers FindChaseSpotDirect.
+        GRDebugLog(this.GetGameInstance(), "Persecucion spot elegido: V_Z=" + FloatToString(playerVehicle.GetWorldPosition().Z) + " spot_Z=" + FloatToString(pos.Z) + " dif=" + FloatToString(pos.Z - playerVehicle.GetWorldPosition().Z), "Spawner");
+        let des: ref<DynamicEntitySystem> = GameInstance.GetDynamicEntitySystem();
+        let spec: ref<DynamicEntitySpec> = new DynamicEntitySpec();
+        spec.recordID = TDBID.Create(vehicleRecord);
+        spec.position = pos;
+        spec.orientation = orientation;
+        spec.persistState = false;
+        spec.persistSpawn = false;
+        // 2026-11-24, user's call after tracing the car-vanishes-behind-V issue to these very flags: a
+        // chase vehicle is explicitly disposable/ambient content under the other three flags here, so the
+        // engine is free to discard it the moment it's not relevant (same as ordinary street traffic,
+        // confirmed by GRTraffic's own constant attach/detach churn) - script has no way to tell "briefly
+        // occluded" from "already recycled" once that happens, which is exactly the ambiguity the evade
+        // debounce above couldn't resolve. Forcing this one true keeps the chase vehicle genuinely alive
+        // and simulating regardless of distance/view, so OUR OWN distance check (not opaque streaming) is
+        // the only thing that ever decides the chase is over - see the literal distance check that
+        // replaces the old "!IsDefined(vehicle)" evade condition below.
+        spec.alwaysSpawned = true;
+        spec.spawnInView = true;
+        spec.active = true;
+        ArrayPush(spec.tags, n"GangRetaliation");
+        this.m_vehicleID = des.CreateEntity(spec);
+        if !EntityID.IsDefined(this.m_vehicleID) {
+            this.m_lastSpawnFailReason = "vehicle CreateEntity failed";
+            return false;
+        }
+        this.m_raidMode = false;
+        this.m_vehicleChaseMode = true;
+        this.m_vehicleState = 1;
+        this.m_vehicleStateTime = this.Now();
+        this.m_vehicleLostSince = 0.0;
+        this.m_vehicleDebugAt = 0.0;
+        this.m_vehicleStuckSince = 0.0;
+        this.SpawnAt(nemesisId, recordID, appearance, pos, orientation, line, speaker);
+        // 2026-11-24, user's call: fit as many of the already-rolled escorts as the car actually has room
+        // for (reserving one seat for the Nemesis) rather than a flat cap - a 2-seater with 1 escort
+        // rolled just gets the two of them, same as a 4-seater would.
+        let maxPassengers: Int32 = Max(1, TweakDBInterface.GetVehicleRecord(TDBID.Create(vehicleRecord)).MaxVehiclePassengersCount());
+        let escortSeats: Int32 = Max(0, maxPassengers - 1);
+        let escorts: array<String>;
+        if StrLen(escortRecords) > 0 {
+            escorts = StrSplit(escortRecords, ",");
+        }
+        let e: Int32 = 0;
+        while e < ArraySize(escorts) && e < escortSeats {
+            this.SpawnAt(0, escorts[e], "", this.EscortSpot(pos, e), orientation, "", "");
+            e += 1;
+        }
+        this.m_ambushActive = true;
+        this.m_ambushStart = this.Now();
+        this.m_ambushCalmSince = 0.0;
+        this.m_ambushSawCombat = false;
+        this.m_stuckChecked = true;
+        GRDebugLog(this.GetGameInstance(), "Persecucion en vehiculo: Nemesis #" + IntToString(nemesisId) + " (" + vehicleRecord + ")", "Spawner");
+        return true;
+    }
+
+    // 2026-11-24, user's call: the Nemesis always rides front passenger, never the driver's seat - seat
+    // assignment by raw spawn-order index used to put whoever was spawned first (always the Nemesis) into
+    // seat_front_left, which is the driver's seat (left-hand-drive convention, same as the rest of this
+    // game). Role is derived from m_nemesisIDs (already set per-index by SpawnAt), not position, so this
+    // works regardless of how many escorts there are or what order they were spawned in.
+    private func SeatRoleFor(index: Int32) -> Int32 {
+        if this.m_nemesisIDs[index] > 0 {
+            return 0;
+        }
+        let escortsBefore: Int32 = 0;
+        let i: Int32 = 0;
+        while i < index {
+            if this.m_nemesisIDs[i] <= 0 {
+                escortsBefore += 1;
+            }
+            i += 1;
+        }
+        return 1 + escortsBefore;
+    }
+
+    private func SeatNameForRole(role: Int32) -> CName {
+        switch role {
+            case 0: return n"seat_front_right"; // Nemesis - always front passenger
+            case 1: return n"seat_front_left";  // first escort - drives
             case 2: return n"seat_back_left";
             default: return n"seat_back_right";
         }
@@ -1152,7 +1577,7 @@ public class GRSpawner extends ScriptableSystem {
 
     private func MountData(index: Int32) -> ref<MountEventData> {
         let data: ref<MountEventData> = new MountEventData();
-        data.slotName = this.SeatName(index);
+        data.slotName = this.SeatNameForRole(this.SeatRoleFor(index));
         data.mountParentEntityId = this.m_vehicleID;
         data.isInstant = true;
         data.ignoreHLS = true;
@@ -1166,6 +1591,54 @@ public class GRSpawner extends ScriptableSystem {
     private func TickVehicle(player: ref<PlayerPuppet>, now: Float) {
         let vehicle: ref<VehicleObject> = this.GetVehicle();
         let elapsed: Float = now - this.m_vehicleStateTime;
+        // 2026-11-24: found by the user driving off after killing a chase-mode Nemesis mid-fight - nothing
+        // else ever moves m_vehicleState out of the 1-3 range once chase mode stopped scripting its own
+        // dismount (native AI handles getting in/out now, see above), so Tick()'s normal
+        // ambush-calm/180s-timeout end-of-encounter logic - which only runs once vehicle state is outside
+        // 1-3 - never got a chance to fire, leaving m_ambushActive stuck true indefinitely. Once every
+        // tracked occupant is dead/neutralized, hand off to that normal logic instead of staying wedged
+        // here forever.
+        // 2026-11-24: this used to be gated behind `ArraySize(this.m_entityIDs) > 0`, which seemed like a
+        // reasonable "nothing to check" guard but was actually the opposite of correct - a confirmed kill
+        // (not just a knockout) gets the corpse entity fully deleted, which empties m_entityIDs entirely
+        // via the existing Deleted-event cleanup, and an empty array is the single clearest case of
+        // "everyone's neutralized" there is. The guard was skipping right past the fix for exactly that
+        // case. Scoped to state >= 2 (mounted/driving) rather than running from state 1 too - right after
+        // spawning, an occupant legitimately isn't defined *yet* (still streaming in, same thing state 1's
+        // own "ready" check below already waits out), not because they're gone; without this it could
+        // misread "not loaded yet" as "neutralized" and end the encounter before it even properly starts.
+        if this.m_vehicleState >= 2 {
+            let allNeutralized: Bool = true;
+            let n: Int32 = 0;
+            while n < ArraySize(this.m_entityIDs) {
+                let occupant: ref<ScriptedPuppet> = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_entityIDs[n]) as ScriptedPuppet;
+                // 2026-11-24, user's hunch confirmed in game (a chase ended with "survives the encounter"
+                // after ~30s with no kill, no evade message, no History entry, during a high-speed pursuit
+                // where V never got out): `IsDefined(occupant)` can blip false for a tick purely from
+                // distance/occlusion streaming, exactly the same false signal already fixed for the
+                // vehicle itself above. The old `IsDefined(occupant) && !IsNeutralized(occupant)` treated
+                // that blip as "neutralized" (nothing flips allNeutralized false), ending the whole
+                // encounter on a perfectly healthy, still-chasing Nemesis. A real confirmed kill instead
+                // fully removes the id from m_entityIDs via the existing Deleted-event cleanup - so if an
+                // id is still in this array at all, an undefined occupant here can only be a streaming
+                // blip, never a true death, and must be treated as "still active", not "neutralized".
+                if !IsDefined(occupant) || !GRDetection.IsNeutralized(occupant) {
+                    allNeutralized = false;
+                }
+                n += 1;
+            }
+            if allNeutralized {
+                // 2026-11-24: switching m_vehicleState to 4 alone wasn't enough - confirmed in game it
+                // still said "ambush active" a full minute later. Tick()'s normal combat-calm logic relies
+                // on m_ambushSawCombat, which only ever gets set in the non-vehicle branch of Tick() (the
+                // one that's skipped via an early return the whole time m_vehicleState is 1-3) - so it was
+                // always false here, leaving nothing but the 180s absolute timeout to fall back on. End the
+                // encounter directly instead of handing off to logic that can't actually fire yet.
+                GRDebugLog(this.GetGameInstance(), "Vehiculo: todos los ocupantes neutralizados, se termina la emboscada", "Spawner");
+                this.EndEncounter("Fin de persecucion");
+                return;
+            }
+        }
         if this.m_vehicleState == 1 {
             let ready: Bool = IsDefined(vehicle);
             let i: Int32 = 0;
@@ -1182,44 +1655,284 @@ public class GRSpawner extends ScriptableSystem {
                     let mount: ref<AIMountCommand> = new AIMountCommand();
                     mount.mountData = this.MountData(seat);
                     npc.GetAIControllerComponent().SendCommand(mount);
+                    // Chase mode skips the drive-up-then-dismount flow entirely, so there's no later
+                    // point where hostility would normally get applied (StartVehicleFight) - set it here,
+                    // right as they're mounting, so they're already aggressive once the chase starts.
+                    // 2026-11-24: attitude alone wasn't enough - confirmed in game they didn't spawn in
+                    // actually aggressive. Every other hostile-attitude call in this file also sends a
+                    // CombatHit stim in the same breath (see StartVehicleFight/MakeHostile and the normal
+                    // on-foot ambush spawn handler) - that stim is what actually triggers the AI's "aware
+                    // of a threat, engage" perception; the attitude flag alone only governs who's hostile
+                    // to whom, not immediate behavior.
+                    if this.m_vehicleChaseMode && IsDefined(npc.GetAttitudeAgent()) && IsDefined(player.GetAttitudeAgent()) {
+                        npc.GetAttitudeAgent().SetAttitudeTowards(player.GetAttitudeAgent(), EAIAttitude.AIA_Hostile);
+                        StimBroadcasterComponent.SendStimDirectly(player, gamedataStimType.CombatHit, npc);
+                    }
                     seat += 1;
                 }
-                GRLog("Vehiculo: montando " + IntToString(ArraySize(this.m_entityIDs)) + " NPC");
+                GRDebugLog(this.GetGameInstance(), "Vehiculo: montando " + IntToString(ArraySize(this.m_entityIDs)) + " NPC", "Spawner");
                 this.SetVehicleState(2, now);
             } else {
                 if elapsed > 15.0 {
-                    GRLog("Vehiculo: no cargo a tiempo, se bajan a pie");
+                    GRDebugLog(this.GetGameInstance(), "Vehiculo: no cargo a tiempo, se bajan a pie", "Spawner");
                     this.StartVehicleFight(player, now);
                 }
             }
         } else {
             if this.m_vehicleState == 2 && elapsed > 2.0 {
                 if IsDefined(vehicle) {
-                    let drive: ref<AIVehicleDriveToPointAutonomousCommand> = new AIVehicleDriveToPointAutonomousCommand();
-                    drive.targetPosition = Vector4.Vector4To3(player.GetWorldPosition());
-                    drive.minimumDistanceToTarget = 10.0;
-                    drive.maxSpeed = 40.0;
-                    drive.minSpeed = 10.0;
-                    drive.clearTrafficOnPath = true;
-                    drive.driveDownTheRoadIndefinitely = false;
-                    drive.needDriver = true;
-                    let evt: ref<AICommandEvent> = new AICommandEvent();
-                    evt.command = drive;
-                    vehicle.QueueEvent(evt);
-                    vehicle.GetAIComponent().SetInitCmd(drive);
-                    GRLog("Vehiculo: conduciendo hacia V");
+                    if this.m_vehicleChaseMode {
+                        let chase: ref<AIVehicleChaseCommand> = new AIVehicleChaseCommand();
+                        chase.target = player;
+                        chase.distanceMin = 8.0;
+                        chase.distanceMax = 20.0;
+                        chase.forcedStartSpeed = 15.0;
+                        chase.ignoreChaseVehiclesLimit = true;
+                        chase.boostDrivingStats = true;
+                        let chaseEvt: ref<AICommandEvent> = new AICommandEvent();
+                        chaseEvt.command = chase;
+                        vehicle.QueueEvent(chaseEvt);
+                        vehicle.GetAIComponent().SetInitCmd(chase);
+                        GRDebugLog(this.GetGameInstance(), "Vehiculo: persiguiendo a V", "Spawner");
+                    } else {
+                        let drive: ref<AIVehicleDriveToPointAutonomousCommand> = new AIVehicleDriveToPointAutonomousCommand();
+                        drive.targetPosition = Vector4.Vector4To3(player.GetWorldPosition());
+                        drive.minimumDistanceToTarget = 10.0;
+                        drive.maxSpeed = 40.0;
+                        drive.minSpeed = 10.0;
+                        drive.clearTrafficOnPath = true;
+                        drive.driveDownTheRoadIndefinitely = false;
+                        drive.needDriver = true;
+                        let evt: ref<AICommandEvent> = new AICommandEvent();
+                        evt.command = drive;
+                        vehicle.QueueEvent(evt);
+                        vehicle.GetAIComponent().SetInitCmd(drive);
+                        GRDebugLog(this.GetGameInstance(), "Vehiculo: conduciendo hacia V", "Spawner");
+                    }
                 }
                 this.SetVehicleState(3, now);
             } else {
+                // 2026-11-24: chase mode never dismounts on approach/elapsed/combat like the drive-up
+                // ambush does below, nor on V dismounting their own vehicle - tried an explicit check for
+                // that (V no longer mounted -> stop and get out) but confirmed in game the native AI
+                // combat/vehicle behavior already handles getting in and out correctly entirely on its
+                // own, with zero scripting from us. The explicit check was not just redundant but
+                // conflicting with that - removed instead of left in, per the user's own test.
                 if this.m_vehicleState == 3 {
-                    let close: Bool = IsDefined(vehicle) && Vector4.Distance(vehicle.GetWorldPosition(), player.GetWorldPosition()) < 20.0;
-                    if close || !IsDefined(vehicle) || elapsed > 35.0 || player.IsInCombat() {
-                        GRLog("Vehiculo: se bajan (cerca=" + ToString(close) + ", " + FloatToString(elapsed) + " s)");
-                        this.StartVehicleFight(player, now);
+                    if this.m_vehicleChaseMode {
+                        // 2026-11-24, user's hunch after seeing the car vanish fast: the native AI that
+                        // already handles mount/dismount on its own (confirmed earlier this session) might
+                        // be getting the occupants OUT of the chase car to fight V on foot nearby - in
+                        // which case the car can end up empty and get cleaned up/unloaded quickly, which
+                        // would previously have been misread by the check below as "V outran them" even
+                        // though the Nemesis is still right there, very much not evaded, just on foot now.
+                        // Checked every tick: if every tracked occupant has left the vehicle, hand off to
+                        // the normal on-foot combat state instead of touching the evade logic at all - same
+                        // transition StartVehicleFight() does for the ordinary drive-up ambush, just
+                        // without re-sending an unmount command (they're already out) or re-applying
+                        // hostility (already hostile since they mounted, see the stim fix above).
+                        // 2026-11-24, user's hunch confirmed in game (saw this handoff fire while far away
+                        // from the chase, not from an up-close dismount): if the car ITSELF streams out
+                        // from distance, the mount relationship can get severed right along with it - a
+                        // genuine "got out to fight on foot" and "car just unloaded because V drove far
+                        // away" look identical to GetMountedVehicle() alone. Only trust a "not mounted"
+                        // reading when the occupant is still actually loaded to check in the first place;
+                        // an undefined occupant (same streaming blip already handled elsewhere in this
+                        // function) must NOT count as evidence of a real dismount, or this misfires exactly
+                        // like the old vehicle-evade check used to.
+                        let anyMounted: Bool = false;
+                        let m: Int32 = 0;
+                        while m < ArraySize(this.m_entityIDs) {
+                            let occupant: ref<GameObject> = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_entityIDs[m]) as GameObject;
+                            if !IsDefined(occupant) || IsDefined(GetMountedVehicle(occupant)) {
+                                anyMounted = true;
+                            }
+                            m += 1;
+                        }
+                        if !anyMounted && ArraySize(this.m_entityIDs) > 0 {
+                            GRDebugLog(this.GetGameInstance(), "Vehiculo: los ocupantes se bajaron por su cuenta, pasando a combate a pie", "Spawner");
+                            this.SetVehicleState(4, now);
+                            this.m_ambushStart = now;
+                            this.m_stuckChecked = false;
+                            return;
+                        }
+                        let dist: Float = IsDefined(vehicle) ? Vector4.Distance(vehicle.GetWorldPosition(), player.GetWorldPosition()) : -1.0;
+                        // 2026-11-24, user's call: on-screen diagnostic so the evade/stuck logic below can
+                        // be watched live in game (defined?, distance, how long it's been lost, elapsed
+                        // since state 3 started, anyone still mounted) - throttled to once a second so it
+                        // doesn't flood the overlay.
+                        if now - this.m_vehicleDebugAt > 1.0 {
+                            this.m_vehicleDebugAt = now;
+                            GRDebugLog(this.GetGameInstance(), "Persecucion debug: definido=" + ToString(IsDefined(vehicle)) + " dist=" + FloatToString(dist) + " perdido_desde=" + FloatToString(this.m_vehicleLostSince) + " transcurrido=" + FloatToString(elapsed) + " montado=" + ToString(anyMounted), "Spawner");
+                        }
+                        // 2026-11-24, user's call: if V outruns the chase car, give up and despawn it
+                        // cleanly instead of leaving it active forever, with a dedicated "evaded" message
+                        // (see EvadeVehicleChase()). Originally a literal 600m distance check, but found in
+                        // game it never fired - the vehicle entity itself gets streamed out/unloaded by the
+                        // engine's own distance culling well before 600m, so `IsDefined(vehicle)` was
+                        // already false long before a distance reading could ever happen - simplified at
+                        // the time to just "is the vehicle gone at all", with a 3-second debounce added
+                        // after that alone proved too eager (a single undefined tick can be an ordinary
+                        // streaming/occlusion blip, not a real despawn, confirmed by seeing it fire with V
+                        // "almost on top of" the car).
+                        // 2026-11-24, user's call: traced the real root cause instead of keeping to guess
+                        // around it - the chase vehicle was spawned with `alwaysSpawned = false`, the same
+                        // "disposable ambient content" flag ordinary street traffic uses, so the engine was
+                        // always free to discard it the moment it wasn't relevant (confirmed by GRTraffic's
+                        // own constant attach/detach churn) - script has no way to tell "briefly occluded"
+                        // from "already recycled" once that happens. Now spawned with `alwaysSpawned =
+                        // true` instead (see StartVehicleChase), so the vehicle stays genuinely loaded
+                        // regardless of distance/view, and a real distance reading (not vehicle-existence)
+                        // is the primary "V outran them" signal again, same idea as the original 600m check
+                        // but actually able to fire now that the vehicle isn't disappearing out from under
+                        // it. The old "!IsDefined + 3s debounce" logic stays as a safety net underneath, in
+                        // case the vehicle is ever lost for some other reason (destroyed, a crash, etc.).
+                        // Threshold is now the user-configurable "Vehicle Chase Escape Distance" setting
+                        // (settings.vehicleChaseEvadeDistance, 100-2000m, default 300m) instead of a fixed
+                        // 600m, per the user's request.
+                        if IsDefined(vehicle) {
+                            this.m_vehicleLostSince = 0.0;
+                            let settings: ref<GRSettings> = GRSettings.Get(this.GetGameInstance());
+                            let evadeDistance: Float = Cast<Float>(IsDefined(settings) ? settings.vehicleChaseEvadeDistance : 300);
+                            if dist > evadeDistance {
+                                this.EvadeVehicleChase();
+                                return;
+                            }
+                        } else {
+                            if this.m_vehicleLostSince == 0.0 {
+                                this.m_vehicleLostSince = now;
+                            } else {
+                                if now - this.m_vehicleLostSince > 3.0 {
+                                    this.EvadeVehicleChase();
+                                    return;
+                                }
+                            }
+                        }
+                        // 2026-11-24, user's call after a real in-game crash (occupants alive, still by
+                        // the wrecked car): a car that can't move anymore trips none of the OTHER end
+                        // conditions - not neutralized (alive), not dismounted (still mounted/by the car),
+                        // not evaded (V can easily still be right there, within the escape distance). Runs
+                        // AFTER the distance-evade check above, deliberately - per the user's own design
+                        // call: if V just keeps driving away, the escape-distance check should be the one
+                        // that ends it (a clean "evaded"), not this. This only matters for the case where V
+                        // stays close/turns back - track how far the car has moved since the last check,
+                        // and if it's gone basically nowhere for 10 seconds straight while still loaded and
+                        // still within escape distance, treat it the same as a dismount: give up on the
+                        // vehicle phase and hand off to normal combat (not an outright end - the fight can
+                        // still resume normally if V comes back), since at that point it's functionally no
+                        // different from an ordinary on-foot fight next to a dead car.
+                        if IsDefined(vehicle) {
+                            let vPosNow: Vector4 = vehicle.GetWorldPosition();
+                            if this.m_vehicleStuckSince == 0.0 || Vector4.Distance(vPosNow, this.m_vehicleLastPos) > 3.0 {
+                                this.m_vehicleStuckSince = now;
+                                this.m_vehicleLastPos = vPosNow;
+                            } else {
+                                if now - this.m_vehicleStuckSince > 10.0 {
+                                    GRDebugLog(this.GetGameInstance(), "Vehiculo: parece destrozado/atascado, pasando a combate a pie", "Spawner");
+                                    this.SetVehicleState(4, now);
+                                    this.m_ambushStart = now;
+                                    this.m_stuckChecked = false;
+                                    return;
+                                }
+                            }
+                        }
+                    } else {
+                        let close: Bool = IsDefined(vehicle) && Vector4.Distance(vehicle.GetWorldPosition(), player.GetWorldPosition()) < 20.0;
+                        if close || !IsDefined(vehicle) || elapsed > 35.0 || player.IsInCombat() {
+                            GRDebugLog(this.GetGameInstance(), "Vehiculo: se bajan (cerca=" + ToString(close) + ", " + FloatToString(elapsed) + " s)", "Spawner");
+                            this.StartVehicleFight(player, now);
+                        }
                     }
                 }
             }
         }
+    }
+
+    // 2026-11-24, user's explicit design call ("I want it to stay open until I either drive the 300m from
+    // the car or kill/finish him" - "just for vehicle ambushes, they are a special case"): once a chase
+    // hands off to on-foot combat (dismount or stuck-vehicle), it should have NO arbitrary time limit at
+    // all, unlike every other ambush type - only ending when V either gets away (the same escape-distance
+    // idea the in-vehicle chase itself uses) or the Nemesis is actually neutralized.
+    private func TickVehicleChaseAfterDismount(player: ref<PlayerPuppet>, now: Float) {
+        this.ProvokeIdle(player, now);
+        let gi: GameInstance = this.GetGameInstance();
+        let allNeutralized: Bool = true;
+        let n: Int32 = 0;
+        while n < ArraySize(this.m_entityIDs) {
+            let occupant: ref<ScriptedPuppet> = GameInstance.FindEntityByID(gi, this.m_entityIDs[n]) as ScriptedPuppet;
+            if !IsDefined(occupant) || !GRDetection.IsNeutralized(occupant) {
+                allNeutralized = false;
+            }
+            n += 1;
+        }
+        if allNeutralized {
+            GRDebugLog(gi, "Persecucion: todos los ocupantes neutralizados tras bajarse, fin de encuentro", "Spawner");
+            this.EndEncounter("Fin de persecucion (a pie)");
+            return;
+        }
+        // Anchor the escape-distance check to the actual chase car if it still exists (the clearest "how
+        // far from where this started" reference); if it's gone (destroyed in the crash, or simply
+        // unloaded), fall back to the Nemesis's own current position instead, so the chase can still
+        // conclude properly even without a car left to measure from.
+        let anchor: Vector4;
+        let haveAnchor: Bool = false;
+        let vehicle: ref<VehicleObject> = this.GetVehicle();
+        if IsDefined(vehicle) {
+            anchor = vehicle.GetWorldPosition();
+            haveAnchor = true;
+        } else {
+            let ni: Int32 = 0;
+            while ni < ArraySize(this.m_nemesisIDs) {
+                if this.m_nemesisIDs[ni] > 0 {
+                    let nemesisNpc: ref<ScriptedPuppet> = GameInstance.FindEntityByID(gi, this.m_entityIDs[ni]) as ScriptedPuppet;
+                    if IsDefined(nemesisNpc) {
+                        anchor = nemesisNpc.GetWorldPosition();
+                        haveAnchor = true;
+                    }
+                }
+                ni += 1;
+            }
+        }
+        if haveAnchor {
+            let settings: ref<GRSettings> = GRSettings.Get(gi);
+            let evadeDistance: Float = Cast<Float>(IsDefined(settings) ? settings.vehicleChaseEvadeDistance : 300);
+            if Vector4.Distance(anchor, player.GetWorldPosition()) > evadeDistance {
+                this.EvadeVehicleChase();
+                return;
+            }
+        }
+        // Deliberately no calm/stuck/180s timeout check here at all - stays open until one of the above
+        // conditions fires, per the user's explicit request.
+    }
+
+    // 2026-11-24, user's call: ends a vehicle chase immediately (not the usual lazy "leftover, despawn
+    // once V stops seeing them" flow - at 600m away V is nowhere near seeing them anyway) and queues the
+    // nemesis id so Lua's periodic poll can fire the "evaded" message with their name/gang.
+    private func EvadeVehicleChase() {
+        if ArraySize(this.m_nemesisIDs) > 0 {
+            ArrayPush(this.m_vehicleEvadedIds, this.m_nemesisIDs[0]);
+        }
+        let des: ref<DynamicEntitySystem> = GameInstance.GetDynamicEntitySystem();
+        for id in this.m_entityIDs {
+            des.DeleteEntity(id);
+        }
+        if EntityID.IsDefined(this.m_vehicleID) {
+            des.DeleteEntity(this.m_vehicleID);
+        }
+        GRDebugLog(this.GetGameInstance(), "Persecucion: se evade la persecucion y se despawnea", "Spawner");
+        this.ResetEncounter();
+    }
+
+    public func GetVehicleEvadedCount() -> Int32 {
+        return ArraySize(this.m_vehicleEvadedIds);
+    }
+
+    public func GetVehicleEvadedId(index: Int32) -> Int32 {
+        return this.m_vehicleEvadedIds[index];
+    }
+
+    public func ClearVehicleEvadedIds() {
+        ArrayClear(this.m_vehicleEvadedIds);
     }
 
     private func SetVehicleState(state: Int32, now: Float) {
@@ -1260,7 +1973,13 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func StartReinforcement(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String) -> Bool {
-        if StrLen(this.GetReinforcementBlocker()) > 0 || this.IsNemesisSpawned(nemesisId) {
+        let blocker: String = this.GetReinforcementBlocker();
+        if StrLen(blocker) > 0 {
+            this.m_lastSpawnFailReason = "blocked: " + blocker;
+            return false;
+        }
+        if this.IsNemesisSpawned(nemesisId) {
+            this.m_lastSpawnFailReason = "already spawned";
             return false;
         }
         this.m_raidMode = false;
@@ -1274,6 +1993,7 @@ public class GRSpawner extends ScriptableSystem {
 
     private func SpawnGroup(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, line: String, speaker: String, distance: Float) -> Bool {
         if this.IsMachineNemesis(nemesisId, recordID, "A pie") {
+            this.m_lastSpawnFailReason = "machine nemesis";
             return false;
         }
         let player: ref<PlayerPuppet> = GetPlayer(this.GetGameInstance());
@@ -1282,9 +2002,11 @@ public class GRSpawner extends ScriptableSystem {
         let pos: Vector4 = this.FindSpot(player, angle, distance, 45.0, 0.7, false);
         if !this.m_spotFound {
             GRLog("Sin punto alcanzable detras de V: no se genera");
+            this.m_lastSpawnFailReason = "no reachable point behind V (district: " + this.GetLeafDistrictKey() + ")";
             return false;
         }
         if !this.SpawnAt(nemesisId, recordID, appearance, pos, this.GetFacingPlayer(player, pos), line, speaker) {
+            this.m_lastSpawnFailReason = "SpawnAt failed";
             return false;
         }
 
@@ -1379,18 +2101,26 @@ public class GRSpawner extends ScriptableSystem {
     }
 
     public func StartRaid(nemesisId: Int32, recordID: String, appearance: String, escortRecords: String, speaker: String, policeRecords: String) -> Bool {
-        if StrLen(this.GetAmbushBlocker()) > 0 || this.IsNemesisSpawned(nemesisId) {
+        let blocker: String = this.GetAmbushBlocker();
+        if StrLen(blocker) > 0 {
+            this.m_lastSpawnFailReason = "blocked: " + blocker;
+            return false;
+        }
+        if this.IsNemesisSpawned(nemesisId) {
+            this.m_lastSpawnFailReason = "already spawned";
             return false;
         }
         let force: String = this.GetRaidForce();
         let label: String = "Redada " + force;
         if this.IsMachineNemesis(nemesisId, recordID, label) {
+            this.m_lastSpawnFailReason = "machine nemesis";
             return false;
         }
         let raiders: String = policeRecords;
         if Equals(force, "Barghest") {
             if this.IsBarghestRecord(recordID) {
                 GRLog(label + ": Nemesis #" + IntToString(nemesisId) + " es de Barghest, no se genera");
+                this.m_lastSpawnFailReason = "Nemesis is Barghest, skipped";
                 return false;
             }
             raiders = this.BarghestRaiders(policeRecords);
@@ -1420,6 +2150,7 @@ public class GRSpawner extends ScriptableSystem {
                 let facing: Quaternion = EulerAngles.ToQuat(Vector4.ToRotation(posB - posA));
                 if !this.SpawnAt(nemesisId, recordID, appearance, posA, facing, "", speaker) {
                     this.m_raidMode = false;
+                    this.m_lastSpawnFailReason = "SpawnAt failed";
                     return false;
                 }
                 this.SpawnRaidSide(escortRecords, posA, posB);
@@ -1438,6 +2169,7 @@ public class GRSpawner extends ScriptableSystem {
             }
         }
         GRLog(label + ": sin sitio cerca de V");
+        this.m_lastSpawnFailReason = "no site near V (district: " + this.GetLeafDistrictKey() + ")";
         return false;
     }
 
@@ -1608,6 +2340,9 @@ public class GRSpawner extends ScriptableSystem {
         this.m_raidMode = false;
         this.m_strongholdMode = true;
         this.m_vehicleState = 0;
+        this.m_vehicleChaseMode = false;
+        this.m_vehicleLostSince = 0.0;
+        this.m_vehicleStuckSince = 0.0;
         this.m_ambushActive = true;
         this.m_ambushStart = this.Now();
         this.m_ambushSawCombat = false;
@@ -1946,6 +2681,16 @@ public class GRSpawner extends ScriptableSystem {
             this.TickVehicle(player, now);
             return;
         }
+        // 2026-11-24, user's explicit call ("right, just for vehicle ambushes - they are a special case"):
+        // a vehicle-chase encounter shouldn't be subject to the generic 20s-calm/180s-timeout rules below
+        // at all, even after the dismount/stuck handoff moves it out of TickVehicle()'s own 1-3 range -
+        // it should stay open until V either gets away (the same escape-distance check the chase itself
+        // uses) or actually finishes the Nemesis, with no arbitrary time limit. Ordinary ambush/raid/
+        // skirmish encounters are untouched - this only ever applies to m_vehicleChaseMode.
+        if this.m_vehicleChaseMode && this.m_vehicleState == 4 {
+            this.TickVehicleChaseAfterDismount(player, now);
+            return;
+        }
         if this.m_strongholdMode {
             this.TickGuards(player);
             return;
@@ -2227,6 +2972,9 @@ public class GRSpawner extends ScriptableSystem {
         this.m_raidMode = false;
         this.m_strongholdMode = false;
         this.m_vehicleState = 0;
+        this.m_vehicleChaseMode = false;
+        this.m_vehicleLostSince = 0.0;
+        this.m_vehicleStuckSince = 0.0;
         let none: EntityID;
         this.m_vehicleID = none;
     }

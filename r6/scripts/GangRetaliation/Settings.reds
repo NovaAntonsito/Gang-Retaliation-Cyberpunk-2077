@@ -242,6 +242,16 @@ public class GRSettings extends ScriptableSystem {
     public let ambushSmsSeconds: Int32 = 60;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatAmbush")
+    @runtimeProperty("ModSettings.category.order", "30")
+    @runtimeProperty("ModSettings.displayName", "GR-SetVehicleChaseDistance")
+    @runtimeProperty("ModSettings.description", "GR-SetVehicleChaseDistanceDesc")
+    @runtimeProperty("ModSettings.step", "50")
+    @runtimeProperty("ModSettings.min", "100")
+    @runtimeProperty("ModSettings.max", "2000")
+    public let vehicleChaseEvadeDistance: Int32 = 300;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatGig")
     @runtimeProperty("ModSettings.category.order", "40")
     @runtimeProperty("ModSettings.displayName", "GR-SetGigEnabled")
@@ -398,6 +408,13 @@ public class GRSettings extends ScriptableSystem {
     @runtimeProperty("ModSettings.displayName", "GR-SetDebugLog")
     @runtimeProperty("ModSettings.description", "GR-SetDebugLogDesc")
     public let debugLog: Bool = false;
+
+    @runtimeProperty("ModSettings.mod", "GR-ModName")
+    @runtimeProperty("ModSettings.category", "GR-CatDebug")
+    @runtimeProperty("ModSettings.category.order", "90")
+    @runtimeProperty("ModSettings.displayName", "GR-SetDistrictPanel")
+    @runtimeProperty("ModSettings.description", "GR-SetDistrictPanelDesc")
+    public let districtPanelEnabled: Bool = false;
 
     @runtimeProperty("ModSettings.mod", "GR-ModName")
     @runtimeProperty("ModSettings.category", "GR-CatDebug")

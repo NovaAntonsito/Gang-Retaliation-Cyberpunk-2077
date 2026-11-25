@@ -62,7 +62,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetDebugOnScreenStronghold", "On-screen: Strongholds");
         this.Text("GR-SetDebugOnScreenStrongholdDesc", "Stronghold placement/scanning messages (location picks, moves, revalidation). These always write to gamelog.log regardless of the debug log setting - this only controls whether they also show on screen.");
         this.Text("GR-CatAbout", "About");
-        this.Text("GR-SetVersion", "Gang Retaliation v1.5.6");
+        this.Text("GR-SetVersion", "Gang Retaliation v1.5.7");
         this.Text("GR-SetVersionDesc", "Informational only. Toggling this has no effect.");
         this.Text("GR-CatHud", "HUD");
         this.Text("GR-SetNameplateScale", "Enemy health bar size");
@@ -71,6 +71,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-SetFleeMarkDesc", "A yellow line marks the health at which this ganger runs away if left last standing. Only shown when they really can flee.");
         this.Text("GR-SetThreatPanel", "Threats panel");
         this.Text("GR-SetThreatPanelDesc", "During combat, lists the enemies targeting you with a small health bar each.");
+        this.Text("GR-SetDistrictPanel", "District panel");
+        this.Text("GR-SetDistrictPanelDesc", "Shows your current district's full chain (region down to sub-area) just under the minimap. Independent of the on-screen debug log.");
         this.Text("GR-SetThreatX", "Threats panel X");
         this.Text("GR-SetThreatXDesc", "Horizontal position in 4K units (scaled to your resolution).");
         this.Text("GR-SetThreatY", "Threats panel Y");
@@ -255,6 +257,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-UiWeaponTarget", "Debug: check target hands");
         this.Text("GR-MsgFled", "%s ran away. They will come back for you.");
         this.Text("GR-MsgFledDismembered", "%s ran away, well, most of them did. Watch your back.");
+        this.Text("GR-MsgEvaded", "%s was evaded, but they vow to get you next time.");
 
         this.Text("GR-Gang-Maelstrom", "Maelstrom");
         this.Text("GR-Gang-TygerClaws", "Tyger Claw");
@@ -464,6 +467,8 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-Taunt-PlayerLow-3", "Almost done. Hold still!");
         this.Text("GR-SetAmbushSms", "Warning SMS (seconds before)");
         this.Text("GR-SetAmbushSmsDesc", "The Nemesis texts V this many seconds before the ambush. 0 = no warning, they attack right away.");
+        this.Text("GR-SetVehicleChaseDistance", "Vehicle Chase Escape Distance");
+        this.Text("GR-SetVehicleChaseDistanceDesc", "How far V has to get from the chase car (in meters) before it gives up and the Nemesis is marked as evaded.");
         this.Text("GR-UiSmsAmbush", "Debug: SMS + ambush in 15 s");
         this.Text("GR-Sms-1", "I know where you are, V. See you real soon.");
         this.Text("GR-Sms-2", "Thought you'd seen the last of me? Look behind you in a minute.");
@@ -483,6 +488,7 @@ public class GREnglish extends ModLocalizationPackage {
         this.Text("GR-Gig-2", "Nobody hits my crew without hearing from me!");
         this.Text("GR-Gig-3", "Knew the fixer would send you. Been waiting.");
         this.Text("GR-MsgAmbush", "Ambush! %s found you.");
+        this.Text("GR-MsgVehicleChase", "You've got a tail! %s has found you.");
         this.Text("GR-MsgTWRThreat", "%n (%g) texted you: the %g are coming for you. Watch your back.");
         this.Text("GR-MsgTWRRefuse", "%n (%g) turned down your payment. The %g may forget. %n won't.");
         this.Text("GR-Ambush-1", "Remember me, V? 'Cause I remember you.");
@@ -617,7 +623,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetDebugOnScreenStronghold", "En pantalla: Guaridas");
         this.Text("GR-SetDebugOnScreenStrongholdDesc", "Mensajes de colocacion/escaneo de guaridas (eleccion de ubicacion, mudanzas, revalidacion). Estos siempre se escriben en gamelog.log sin importar el log de depuración - esto solo controla si tambien se muestran en pantalla.");
         this.Text("GR-CatAbout", "Acerca de");
-        this.Text("GR-SetVersion", "Gang Retaliation v1.5.6");
+        this.Text("GR-SetVersion", "Gang Retaliation v1.5.7");
         this.Text("GR-SetVersionDesc", "Solo informativo. Activarlo o desactivarlo no hace nada.");
         this.Text("GR-CatHud", "HUD");
         this.Text("GR-SetNameplateScale", "Tamaño de la barra de vida enemiga");
@@ -626,6 +632,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-SetFleeMarkDesc", "Una línea amarilla marca con cuánta vida huye este pandillero si queda último en pie. Solo aparece si de verdad puede huir.");
         this.Text("GR-SetThreatPanel", "Panel de amenazas");
         this.Text("GR-SetThreatPanelDesc", "En combate, lista a los enemigos que te tienen como objetivo, cada uno con una barra de vida pequeña.");
+        this.Text("GR-SetDistrictPanel", "Panel de distrito");
+        this.Text("GR-SetDistrictPanelDesc", "Muestra la cadena completa de tu distrito actual (region hasta sub-zona) justo debajo del minimapa. Independiente del log de depuracion en pantalla.");
         this.Text("GR-SetThreatX", "Panel de amenazas: X");
         this.Text("GR-SetThreatXDesc", "Posición horizontal en unidades 4K (se escala a tu resolución).");
         this.Text("GR-SetThreatY", "Panel de amenazas: Y");
@@ -810,6 +818,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-UiWeaponTarget", "Debug: revisar las manos del objetivo");
         this.Text("GR-MsgFled", "%s ha huido. Volverá a por ti.");
         this.Text("GR-MsgFledDismembered", "%s huyó, bueno, la mayor parte al menos. Cuídate las espaldas.");
+        this.Text("GR-MsgEvaded", "%s fue esquivado, pero jura atraparte la próxima vez.");
 
         this.Text("GR-Gang-Maelstrom", "Maelstrom");
         this.Text("GR-Gang-TygerClaws", "Tyger Claw");
@@ -1019,6 +1028,8 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-Taunt-PlayerLow-3", "Ya casi está. ¡No te muevas!");
         this.Text("GR-SetAmbushSms", "SMS de aviso (segundos antes)");
         this.Text("GR-SetAmbushSmsDesc", "El Némesis escribe a V estos segundos antes de la emboscada. 0 = sin aviso, ataca enseguida.");
+        this.Text("GR-SetVehicleChaseDistance", "Distancia de escape de persecución en vehículo");
+        this.Text("GR-SetVehicleChaseDistanceDesc", "Cuánto tiene que alejarse V del auto de persecución (en metros) antes de que se rinda y el Némesis se marque como evadido.");
         this.Text("GR-UiSmsAmbush", "Debug: SMS + emboscada en 15 s");
         this.Text("GR-Sms-1", "Sé dónde estás, V. Nos vemos muy pronto.");
         this.Text("GR-Sms-2", "¿Creías que no me ibas a ver más? Mira detrás de ti en un minuto.");
@@ -1038,6 +1049,7 @@ public class GRSpanish extends ModLocalizationPackage {
         this.Text("GR-Gig-2", "¡Nadie toca a mi gente sin vérselas conmigo!");
         this.Text("GR-Gig-3", "Sabía que el fixer te mandaría a ti. Te estaba esperando.");
         this.Text("GR-MsgAmbush", "¡Emboscada! %s te ha encontrado.");
+        this.Text("GR-MsgVehicleChase", "¡Te están siguiendo! %s te ha encontrado.");
         this.Text("GR-MsgTWRThreat", "%n (%g) te escribió: los %g van a por ti. Cuídate la espalda.");
         this.Text("GR-MsgTWRRefuse", "%n (%g) rechazó tu pago. Los %g pueden olvidar. %n no.");
         this.Text("GR-Ambush-1", "¿Te acuerdas de mí, V? Porque yo de ti sí.");
